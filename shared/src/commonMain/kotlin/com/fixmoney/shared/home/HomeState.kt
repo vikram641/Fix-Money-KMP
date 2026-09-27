@@ -14,6 +14,14 @@ import kotlinx.coroutines.flow.map
  * 0 because the week window needs real date arithmetic, which this build's
  * deliberately minimal date layer (`platform/DateTime.kt`) does not do yet.
  */
+/** One slice of Home's donut: a category, its share of the month's spend. */
+data class CategorySlice(
+    val name: String,
+    val colorHex: String,
+    val amount: Int,
+    val percent: Int
+)
+
 data class HomeUiState(
     val greeting: String,
     val initials: String,
@@ -21,7 +29,8 @@ data class HomeUiState(
     val currencySymbol: String,
     val totalSpent: Int,
     val weekSpent: Int,
-    val totalBudget: Int
+    val totalBudget: Int,
+    val breakdown: List<CategorySlice> = emptyList()
 ) {
     val remaining: Int get() = (totalBudget - totalSpent).coerceAtLeast(0)
 
@@ -49,6 +58,31 @@ class HomeStateFactory(
     ): HomeUiState {
         val name = prefs.getUserName()
         val spent = rows.sumOf { it.amount.toIntOrNull() ?: 0 }
+
+        // Grouped by category for the donut, biggest first - the same breakdown
+        // the old Home showed via MPAndroidChart's pie + legend.
+        val slices = rows
+            .groupBy { it.categoryName }
+            .map { (name, group) ->
+                val amount = group.sumOf { it.amount.toIntOrNull() ?: 0 }
+                CategorySlice(
+                    name = name,
+                    colorHex = group.first().categoryColor,
+                    amount = amount,
+                    percent = if (spent <= 0) 0 else ((amount * 100L) / spent).toInt()
+                )
+            }
+            .sortedByDescending { it.amount }
+            .let { list ->
+                // Integer division loses a point or two (87% + 12% = 99%), which
+                // shows as a gap in the donut. Give the remainder to the biggest
+                // slice so the labels and the ring both add up to 100.
+                val gap = 100 - list.sumOf { it.percent }
+                if (gap == 0 || list.isEmpty()) list
+                else list.mapIndexed { i, slice ->
+                    if (i == 0) slice.copy(percent = slice.percent + gap) else slice
+                }
+            }
         return HomeUiState(
             greeting = "${greetingForHour()}\n${name?.takeIf { it.isNotBlank() } ?: "there"} 👋",
             initials = initialsFrom(name),
@@ -56,7 +90,8 @@ class HomeStateFactory(
             currencySymbol = CurrencyConstants.symbolFor(prefs.getCurrencyCode()),
             totalSpent = spent,
             weekSpent = 0,
-            totalBudget = prefs.getMonthlyBudget()
+            totalBudget = prefs.getMonthlyBudget(),
+            breakdown = slices
         )
     }
 

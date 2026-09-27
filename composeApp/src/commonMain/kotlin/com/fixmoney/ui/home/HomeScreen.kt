@@ -26,8 +26,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fixmoney.resources.Res
-import com.fixmoney.resources.ic_sparkle
 import com.fixmoney.resources.ic_wallet_empty
+import io.github.alexzhirkevich.compottie.Compottie
+import io.github.alexzhirkevich.compottie.LottieCompositionSpec
+import io.github.alexzhirkevich.compottie.rememberLottieComposition
+import io.github.alexzhirkevich.compottie.rememberLottiePainter
+import org.jetbrains.compose.resources.ExperimentalResourceApi
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fixmoney.shared.home.HomeStateFactory
 import com.fixmoney.shared.platform.currentMonthApi
@@ -46,12 +50,20 @@ import org.koin.compose.koinInject
  * list, the offline banner, pull-to-refresh, the month picker, and the AdMob
  * banner. Each needs a data source or a library that does not exist here yet.
  */
+@OptIn(ExperimentalResourceApi::class)
 @Composable
 fun HomeScreen(onAddExpense: () -> Unit = {}, onAskAi: () -> Unit = {}) {
     val colors = AppTheme.colors
     val factory: HomeStateFactory = koinInject()
     var month by remember { mutableStateOf(currentMonthApi()) }
     var showMonthPicker by remember { mutableStateOf(false) }
+
+    // The old Home had this as a LottieAnimationView ("Ask AI" button).
+    val aiComposition by rememberLottieComposition {
+        LottieCompositionSpec.JsonString(
+            Res.readBytes("files/lottie/ai.json").decodeToString()
+        )
+    }
     // remember(month) so switching months restarts the flow from a matching
     // initial value instead of briefly showing the previous month's totals.
     val flow = remember(month) { factory.observe(month) }
@@ -84,19 +96,14 @@ fun HomeScreen(onAddExpense: () -> Unit = {}, onAskAi: () -> Unit = {}) {
                         modifier = Modifier.clickable { showMonthPicker = true }
                     )
                 }
-                Box(
-                    modifier = Modifier.size(52.dp).clip(CircleShape)
-                        .background(colors.accent.copy(alpha = 0.16f))
-                        .clickable(onClick = onAskAi),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        painter = painterResource(Res.drawable.ic_sparkle),
-                        contentDescription = "Ask AI",
-                        tint = colors.accent,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
+                Image(
+                    painter = rememberLottiePainter(
+                        composition = aiComposition,
+                        iterations = Compottie.IterateForever
+                    ),
+                    contentDescription = "Ask AI",
+                    modifier = Modifier.size(52.dp).clickable(onClick = onAskAi)
+                )
                 Spacer(Modifier.width(12.dp))
                 Box(
                     modifier = Modifier.size(52.dp).clip(CircleShape).background(colors.accent),
@@ -115,7 +122,11 @@ fun HomeScreen(onAddExpense: () -> Unit = {}, onAskAi: () -> Unit = {}) {
             BudgetCard(state)
 
             Spacer(Modifier.height(18.dp))
-            if (!state.hasExpenses) EmptyStateCard(onAddExpense)
+            if (state.hasExpenses) {
+                SpendingDonut(state.breakdown)
+            } else {
+                EmptyStateCard(onAddExpense)
+            }
 
             Spacer(Modifier.height(110.dp))
         }

@@ -214,6 +214,10 @@ The database file is the only platform-specific part (`DatabaseBuilderFactory`, 
 
 `AddExpenseScreen` ports `fragment_add_expense.xml`. Amount is whole numbers only, matching the old `amount.toInt()` validation. **Scan Receipt and Attach Photo are inert** - both need camera/photo access, the biggest expect/actual chunk left in the plan.
 
+`ui/home/SpendingDonut.kt` replaces the old Home's MPAndroidChart pie + legend, drawn with `Canvas` arcs rather than a chart library - Vico (the plan's suggestion) is another dependency to clear the iosX64 + Kotlin-version gate for, and a donut is a handful of arcs. Slice colours are the category colours from Firestore. Integer percentages are nudged so they sum to 100; otherwise 87 + 12 leaves a visible gap in the ring.
+
+The "Ask AI" button is `ai.json` played through Compottie, as the old Home did with a `LottieAnimationView`.
+
 Home now reads spend from Room reactively, so a new expense appears without a refresh. `weekSpent` is still 0: the week window needs real date arithmetic, which the minimal `platform/DateTime.kt` does not do. That is where kotlinx-datetime would finally earn its place.
 
 ## Blockers and not-done
