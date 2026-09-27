@@ -4,8 +4,8 @@ import android.util.Log
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 
-internal actual fun httpClient(): HttpClient = HttpClient(OkHttp)
+actual fun httpClient(): HttpClient = HttpClient(OkHttp)
 
-internal actual fun logWarn(tag: String, message: String) {
+actual fun logWarn(tag: String, message: String) {
     Log.w(tag, message)
 }

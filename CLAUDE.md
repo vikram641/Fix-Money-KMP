@@ -133,13 +133,27 @@ All 8 screens of the old onboarding flow, ported from their XML layouts and cros
 ### Deliberate differences from the old app
 
 - **`SetupBudgetScreen` scrolls.** The old `ConstraintLayout` had no ScrollView — it only ever fitted because the reference device is 20:9. On a 16:9 screen the category row and Continue button fell off the bottom. The body now scrolls with the button pinned; on a tall device it looks identical.
-- **Category chips come from `DefaultCategories`**, a hardcoded copy of the 7 documents seeded into Firestore (same ids, names, colours, icon names). The old app read them from Firestore via Room. Swap the source when the data layer lands — everything already deals in `Category`.
+- **Category chips come from Firestore**, like the old app — but over the **REST API via Ktor**, not an SDK. See "Categories" below.
 - **`OnboardingState.complete()` does not write `BudgetEntity` rows.** The old `completeOnboarding()` also created per-category budget rows for the current month so the number reached the Budget screen and Home's card. That half needs Room.
 - Category icon names are mapped to drawables explicitly in `SetupBudgetScreen.categoryIcon()`. The old app used `resources.getIdentifier(...)`, which has no compose-resources equivalent — accessors are generated, so the mapping must be static.
 
+### Categories (Firestore over REST)
+
+`shared/data/CategoryRepository.kt` fetches the public `categories` collection straight from Firestore's REST API with the Ktor client already in the project:
+
+```
+GET https://firestore.googleapis.com/v1/projects/expenseapp-7b500/databases/(default)/documents/categories?key=<web api key>
+```
+
+**Why REST and not a Firebase SDK**: the official SDK is Android/iOS-native, and the community KMP wrapper (GitLive) would have to clear the same two hurdles every other library here does — `iosX64` and a Kotlin ≤ 2.2.0 klib. REST needs neither, works identically on both platforms, and is the pattern the migration plan already recommends for Gemini in section 6.2. Firestore's REST shape wraps each field in its type (`{"name": {"stringValue": "Food"}}`), which is what the `Firestore*` DTOs in that file decode.
+
+The collection is world-readable by design (`allow read: if true`; everything else in the project stays locked), so the only credential is the Firebase **Web API key** in `shared/data/FirebaseConfig.kt`. That key is not a secret — it ships inside every client binary, and access is controlled by security rules rather than by hiding it.
+
+Retries 3× with a 1.5s delay, matching the old `OnboardingViewModel.loadCategoriesWithRetry()` — a single cold call raced app startup and left the chip picker permanently empty for that session. Unlike the old app, total failure falls back to `DefaultCategories` (an identical copy of the 7 seeded documents) so an offline first run still shows chips. Results are cached in memory; Room will replace that.
+
 ### Verified
 
-Both targets build (`checkAll`), and Welcome / Feature / SetupName / SetupBudget / AllSet were each rendered on the iPhone SE iOS 17.5 simulator in dark mode and compared against the old app's screenshots. Interaction (tapping through) has not been machine-verified — see "Driving the simulator".
+Categories confirmed arriving from Firestore on iOS, not the fallback — the simulator's network log shows the real request to `firestore.googleapis.com`. Both targets build (`checkAll`), and Welcome / Feature / SetupName / SetupBudget / AllSet were each rendered on the iPhone SE iOS 17.5 simulator in dark mode and compared against the old app's screenshots. Interaction (tapping through) has not been machine-verified — see "Driving the simulator".
 
 **One feature ported**: `shared/src/commonMain/.../ai/GroqChatAssistant.kt` — the old app's Groq chat fallback, rewritten from OkHttp + `org.json` to Ktor + kotlinx.serialization. Same prompt text, same model (`openai/gpt-oss-20b`), same 20s timeout, same 429→`QuotaExceeded` handling. Takes `apiKey` as a parameter (shared code has no `BuildConfig`). Groq's live response shape was re-verified against the new `@Serializable` DTOs by curl. **Never run at runtime on either platform** — compile- and contract-verified only.
 

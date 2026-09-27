@@ -9,6 +9,6 @@ import io.ktor.client.HttpClient
  * Android, Darwin/NSLog on iOS) - the same pattern the rest of the iOS port
  * will use for camera, OCR, ads and background sync.
  */
-internal expect fun httpClient(): HttpClient
+expect fun httpClient(): HttpClient
 
-internal expect fun logWarn(tag: String, message: String)
+expect fun logWarn(tag: String, message: String)

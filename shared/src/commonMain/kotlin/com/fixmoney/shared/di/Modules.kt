@@ -1,6 +1,10 @@
 package com.fixmoney.shared.di
 
+import com.fixmoney.shared.data.CategoryRepository
 import com.fixmoney.shared.onboarding.OnboardingPrefs
+import com.fixmoney.shared.platform.httpClient
+import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpTimeout
 import com.russhwolf.settings.Settings
 import org.koin.core.KoinApplication
 import org.koin.core.context.startKoin
@@ -12,7 +16,16 @@ import org.koin.dsl.module
  * code (migration plan section 5).
  */
 val sharedModule = module {
+    single<HttpClient> {
+        httpClient().config {
+            install(HttpTimeout) {
+                connectTimeoutMillis = 10_000
+                requestTimeoutMillis = 15_000
+            }
+        }
+    }
     single { OnboardingPrefs(get()) }
+    single { CategoryRepository(get()) }
 }
 
 /** Provides the platform's Settings implementation (SharedPreferences / NSUserDefaults). */

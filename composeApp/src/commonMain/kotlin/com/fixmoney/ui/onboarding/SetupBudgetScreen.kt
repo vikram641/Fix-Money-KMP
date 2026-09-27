@@ -15,6 +15,11 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,14 +30,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fixmoney.resources.*
+import com.fixmoney.shared.data.CategoryRepository
+import com.fixmoney.shared.model.Category
 import com.fixmoney.shared.model.CurrencyConstants
-import com.fixmoney.shared.model.DefaultCategories
 import com.fixmoney.ui.AppTheme
 import com.fixmoney.ui.components.IconBadge
 import com.fixmoney.ui.components.PrimaryButton
 import com.fixmoney.ui.components.StepHeader
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
+import org.koin.compose.koinInject
 
 private const val BUDGET_MAX = 100_000
 
@@ -46,6 +53,13 @@ fun SetupBudgetScreen(
 ) {
     val colors = AppTheme.colors
     val symbol = CurrencyConstants.symbolFor(state.currencyCode)
+
+    // The old OnboardingViewModel kicked this off when onboarding started, so
+    // categories were ready several screens later. Here the fetch is cached in
+    // the repository, so arriving on this screen is soon enough.
+    val repository: CategoryRepository = koinInject()
+    var categories by remember { mutableStateOf<List<Category>>(emptyList()) }
+    LaunchedEffect(Unit) { categories = repository.getCategories() }
 
     // The old ConstraintLayout had no ScrollView - it only ever fitted because
     // the reference device is 20:9. On a shorter screen (iPhone SE) the category
@@ -179,8 +193,18 @@ fun SetupBudgetScreen(
             color = colors.textSecondary
         )
         Spacer(Modifier.height(12.dp))
+        if (categories.isEmpty()) {
+            // Keeps the row from collapsing while the Firestore call is in flight.
+            Box(Modifier.height(100.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = colors.accent,
+                    strokeWidth = 2.dp
+                )
+            }
+        } else {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            items(DefaultCategories.ALL, key = { it.id }) { category ->
+            items(categories, key = { it.id }) { category ->
                 val selected = category.id in state.selectedCategoryIds
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(
@@ -210,6 +234,7 @@ fun SetupBudgetScreen(
                     )
                 }
             }
+        }
         }
 
         Spacer(Modifier.height(24.dp))
