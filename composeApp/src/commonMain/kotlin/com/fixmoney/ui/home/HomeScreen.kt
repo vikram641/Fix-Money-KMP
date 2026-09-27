@@ -14,6 +14,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,7 +30,9 @@ import com.fixmoney.resources.ic_sparkle
 import com.fixmoney.resources.ic_wallet_empty
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fixmoney.shared.home.HomeStateFactory
+import com.fixmoney.shared.platform.currentMonthApi
 import com.fixmoney.ui.AppTheme
+import com.fixmoney.ui.components.MonthYearDialog
 import com.fixmoney.ui.onboarding.formatIndian
 import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.koinInject
@@ -46,7 +50,12 @@ import org.koin.compose.koinInject
 fun HomeScreen(onAddExpense: () -> Unit = {}, onAskAi: () -> Unit = {}) {
     val colors = AppTheme.colors
     val factory: HomeStateFactory = koinInject()
-    val state by factory.observe().collectAsStateWithLifecycle(remember { factory.build() })
+    var month by remember { mutableStateOf(currentMonthApi()) }
+    var showMonthPicker by remember { mutableStateOf(false) }
+    // remember(month) so switching months restarts the flow from a matching
+    // initial value instead of briefly showing the previous month's totals.
+    val flow = remember(month) { factory.observe(month) }
+    val state by flow.collectAsStateWithLifecycle(remember(month) { factory.build(month = month) })
 
     Box(Modifier.fillMaxSize()) {
         Column(
@@ -68,7 +77,12 @@ fun HomeScreen(onAddExpense: () -> Unit = {}, onAskAi: () -> Unit = {}) {
                         color = colors.textPrimary
                     )
                     Spacer(Modifier.height(4.dp))
-                    Text(state.month, fontSize = 15.sp, color = colors.textSecondary)
+                    Text(
+                        state.month,
+                        fontSize = 15.sp,
+                        color = colors.textSecondary,
+                        modifier = Modifier.clickable { showMonthPicker = true }
+                    )
                 }
                 Box(
                     modifier = Modifier.size(52.dp).clip(CircleShape)
@@ -119,6 +133,16 @@ fun HomeScreen(onAddExpense: () -> Unit = {}, onAskAi: () -> Unit = {}) {
         ) {
             Text("+", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
+    }
+
+    if (showMonthPicker) {
+        MonthYearDialog(
+            title = "Select Month  Year",
+            initial = month,
+            showDays = false,
+            onDismiss = { showMonthPicker = false },
+            onConfirm = { month = it; showMonthPicker = false }
+        )
     }
 }
 

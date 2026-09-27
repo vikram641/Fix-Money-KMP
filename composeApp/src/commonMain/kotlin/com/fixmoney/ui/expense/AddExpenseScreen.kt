@@ -32,6 +32,7 @@ import com.fixmoney.shared.onboarding.OnboardingPrefs
 import com.fixmoney.shared.platform.todayIso
 import com.fixmoney.ui.AppTheme
 import com.fixmoney.ui.categoryIconFor
+import com.fixmoney.ui.components.MonthYearDialog
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.koinInject
@@ -61,6 +62,7 @@ fun AddExpenseScreen(onClose: () -> Unit) {
     var dateIso by remember { mutableStateOf(todayIso()) }
     var saving by remember { mutableStateOf(false) }
     var hint by remember { mutableStateOf<String?>(null) }
+    var showDatePicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { categories = categoryRepo.getCategories() }
 
@@ -127,24 +129,32 @@ fun AddExpenseScreen(onClose: () -> Unit) {
             ) {
                 Text("A M O U N T", fontSize = 13.sp, color = colors.textSecondary)
                 Spacer(Modifier.height(14.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(symbol, fontSize = 34.sp, fontWeight = FontWeight.Bold, color = colors.accent)
-                    Box {
+                // BasicTextField fills the available width by default, which
+                // pushed the whole row to the left edge. IntrinsicSize.Min makes
+                // it wrap its text so the row can actually centre.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(symbol, fontSize = 36.sp, fontWeight = FontWeight.Bold, color = colors.accent)
+                    Spacer(Modifier.width(4.dp))
+                    Box(contentAlignment = Alignment.CenterStart) {
                         if (amount.isEmpty()) {
-                            Text("0", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = colors.textHint)
+                            Text("0", fontSize = 44.sp, fontWeight = FontWeight.Bold, color = colors.textHint)
                         }
                         BasicTextField(
                             value = amount,
                             onValueChange = { amount = it.filter { c -> c.isDigit() }.take(7) },
                             singleLine = true,
                             textStyle = LocalTextStyle.current.copy(
-                                fontSize = 40.sp,
+                                fontSize = 44.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = colors.textPrimary
                             ),
                             cursorBrush = SolidColor(colors.accent),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.widthIn(min = 40.dp)
+                            modifier = Modifier.width(IntrinsicSize.Min).widthIn(min = 44.dp)
                         )
                     }
                 }
@@ -160,7 +170,10 @@ fun AddExpenseScreen(onClose: () -> Unit) {
                     )
                 }
             } else {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    contentPadding = PaddingValues(end = 8.dp)
+                ) {
                     items(categories, key = { it.id }) { category ->
                         val isSelected = selected?.id == category.id
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -210,7 +223,12 @@ fun AddExpenseScreen(onClose: () -> Unit) {
             Spacer(Modifier.height(20.dp))
             Text("Date", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
             Spacer(Modifier.height(10.dp))
-            FieldBox {
+            Box(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+                    .border(1.dp, colors.cardStroke, RoundedCornerShape(18.dp))
+                    .clickable { showDatePicker = true }
+                    .padding(horizontal = 18.dp, vertical = 18.dp)
+            ) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(prettyDate(dateIso), fontSize = 16.sp, color = colors.textPrimary)
                     Spacer(Modifier.weight(1f))
@@ -229,6 +247,16 @@ fun AddExpenseScreen(onClose: () -> Unit) {
             }
             Spacer(Modifier.height(30.dp))
         }
+    }
+
+    if (showDatePicker) {
+        MonthYearDialog(
+            title = "Select Date",
+            initial = dateIso,
+            showDays = true,
+            onDismiss = { showDatePicker = false },
+            onConfirm = { dateIso = it; showDatePicker = false }
+        )
     }
 }
 

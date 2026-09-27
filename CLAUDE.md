@@ -208,6 +208,10 @@ The database file is the only platform-specific part (`DatabaseBuilderFactory`, 
 
 `ExpenseRepository` is local-only; the old app also queued a server sync row, but there is no backend in this build (the old one had been running fully offline too). Ids are `local-<millis>` - there is no UUID in common Kotlin, and the server assigned real ids before.
 
+`ui/components/MonthYearDialog.kt` is one composable serving both of the old app's pickers - `MonthYearPickerDialog` on Home (`showDays = false`) and `SelectDateDialog` on Add Expense (`showDays = true`). Home's month is selectable, and switching it re-queries Room for that month.
+
+**`BasicTextField` fills the available width by default**, which left-aligned the whole amount row instead of centring it. `Modifier.width(IntrinsicSize.Min)` makes it wrap its text so the parent can centre. The same pattern is used for the budget amount in onboarding.
+
 `AddExpenseScreen` ports `fragment_add_expense.xml`. Amount is whole numbers only, matching the old `amount.toInt()` validation. **Scan Receipt and Attach Photo are inert** - both need camera/photo access, the biggest expect/actual chunk left in the plan.
 
 Home now reads spend from Room reactively, so a new expense appears without a refresh. `weekSpent` is still 0: the week window needs real date arithmetic, which the minimal `platform/DateTime.kt` does not do. That is where kotlinx-datetime would finally earn its place.

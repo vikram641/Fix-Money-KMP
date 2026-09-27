@@ -40,16 +40,19 @@ class HomeStateFactory(
     /** Re-emits whenever the expenses table changes, so a new expense shows up
      * on Home without a manual refresh - same behaviour as the old
      * `HomeViewModel.recentExpenses`. */
-    fun observe(): Flow<HomeUiState> =
-        expenses.observeMonth(currentMonthApi()).map { rows -> build(rows) }
+    fun observe(month: String = currentMonthApi()): Flow<HomeUiState> =
+        expenses.observeMonth(month).map { rows -> build(rows, month) }
 
-    fun build(rows: List<ExpenseEntity> = emptyList()): HomeUiState {
+    fun build(
+        rows: List<ExpenseEntity> = emptyList(),
+        month: String = currentMonthApi()
+    ): HomeUiState {
         val name = prefs.getUserName()
         val spent = rows.sumOf { it.amount.toIntOrNull() ?: 0 }
         return HomeUiState(
             greeting = "${greetingForHour()}\n${name?.takeIf { it.isNotBlank() } ?: "there"} 👋",
             initials = initialsFrom(name),
-            month = currentMonthApi(),
+            month = month,
             currencySymbol = CurrencyConstants.symbolFor(prefs.getCurrencyCode()),
             totalSpent = spent,
             weekSpent = 0,
