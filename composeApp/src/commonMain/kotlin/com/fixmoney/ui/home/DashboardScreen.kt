@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fixmoney.resources.*
 import com.fixmoney.ui.AppTheme
+import com.fixmoney.ui.analytics.AnalyticsScreen
 import com.fixmoney.ui.budget.BudgetScreen
 import com.fixmoney.ui.expense.ExpensesScreen
 import com.fixmoney.ui.settings.SettingsScreen
@@ -42,7 +43,8 @@ enum class DashboardTab(val label: String, val icon: DrawableResource) {
 fun DashboardScreen(
     onAddExpense: () -> Unit = {},
     onAskAi: () -> Unit = {},
-    onDarkModeChanged: (Boolean) -> Unit = {}
+    onDarkModeChanged: (Boolean) -> Unit = {},
+    onOpenSip: () -> Unit = {}
 ) {
     val colors = AppTheme.colors
     var tab by remember { mutableStateOf(DashboardTab.Home) }
@@ -53,8 +55,11 @@ fun DashboardScreen(
                 DashboardTab.Home -> HomeScreen(onAddExpense = onAddExpense, onAskAi = onAskAi)
                 DashboardTab.Expenses -> ExpensesScreen()
                 DashboardTab.Budget -> BudgetScreen()
-                DashboardTab.Settings -> SettingsScreen(onDarkModeChanged = onDarkModeChanged)
-                DashboardTab.Analytics -> ComingSoon(tab.label)
+                DashboardTab.Settings -> SettingsScreen(
+                    onDarkModeChanged = onDarkModeChanged,
+                    onOpenSip = onOpenSip
+                )
+                DashboardTab.Analytics -> AnalyticsScreen()
             }
         }
 
@@ -68,28 +73,40 @@ fun DashboardScreen(
                 // every inset including the status bar's, which showed up as a
                 // large empty gap above these icons.
                 .navigationBarsPadding()
-                .padding(vertical = 8.dp),
+                .padding(vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Icons only, no labels - the old bottom bar marked the active tab
-            // with a rounded pill behind the icon instead.
             DashboardTab.entries.forEach { item ->
                 val selected = item == tab
-                Box(
-                    contentAlignment = Alignment.Center,
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(
-                            if (selected) colors.accent.copy(alpha = 0.22f) else Color.Transparent
-                        )
+                        .clip(RoundedCornerShape(18.dp))
                         .clickable { tab = item }
-                        .padding(horizontal = 18.dp, vertical = 8.dp)
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Image(
-                        painter = painterResource(item.icon),
-                        contentDescription = item.label,
-                        modifier = Modifier.size(28.dp)
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(
+                                if (selected) colors.accent.copy(alpha = 0.22f) else Color.Transparent
+                            )
+                            .padding(horizontal = 16.dp, vertical = 5.dp)
+                    ) {
+                        Image(
+                            painter = painterResource(item.icon),
+                            contentDescription = item.label,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        item.label,
+                        fontSize = 11.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                        color = if (selected) colors.accent else colors.textSecondary
                     )
                 }
             }

@@ -50,6 +50,9 @@ fun BudgetScreen() {
 
     val symbol = remember { CurrencyConstants.symbolFor(prefs.getCurrencyCode()) }
     var month by remember { mutableStateOf(currentMonthApi()) }
+    var showSetBudget by remember { mutableStateOf(false) }
+    var categoryList by remember { mutableStateOf<List<com.fixmoney.shared.model.Category>>(emptyList()) }
+    LaunchedEffect(Unit) { categoryList = categories.getCategories() }
     val flow = remember(month) { budgets.observeForMonth(month) }
     val rows by flow.collectAsStateWithLifecycle(emptyList())
 
@@ -72,16 +75,7 @@ fun BudgetScreen() {
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
                 color = colors.accent,
-                modifier = Modifier.clickable {
-                    scope.launch {
-                        budgets.setSplitBudget(
-                            categories = categories.getCategories(),
-                            total = prefs.getMonthlyBudget(),
-                            month = month,
-                            currency = prefs.getCurrencyCode()
-                        )
-                    }
-                }
+                modifier = Modifier.clickable { showSetBudget = true }
             )
         }
 
@@ -205,6 +199,20 @@ fun BudgetScreen() {
             }
         }
     }
+
+    SetBudgetHost(
+        show = showSetBudget,
+        categories = categoryList,
+        month = month,
+        currency = prefs.getCurrencyCode(),
+        onDismiss = { showSetBudget = false },
+        onSave = { category, limit ->
+            scope.launch {
+                budgets.setBudget(category, limit, month, prefs.getCurrencyCode())
+                showSetBudget = false
+            }
+        }
+    )
 }
 
 @Composable
@@ -218,6 +226,37 @@ private fun ProgressBar(percent: Int, color: androidx.compose.ui.graphics.Color)
             )
         }
     }
+}
+
+@Composable
+private fun SetBudgetHost(
+    show: Boolean,
+    categories: List<com.fixmoney.shared.model.Category>,
+    month: String,
+    currency: String,
+    onDismiss: () -> Unit,
+    onSave: (com.fixmoney.shared.model.Category, Int) -> Unit
+) {
+    if (show && categories.isNotEmpty()) {
+        SetBudgetDialog(
+            categories = categories,
+            monthLabel = prettyMonthLabel(month),
+            currencyCode = currency,
+            onDismiss = onDismiss,
+            onSave = onSave
+        )
+    }
+}
+
+/** "2026-09" -> "September 2026". */
+internal fun prettyMonthLabel(month: String): String {
+    val parts = month.split("-")
+    val m = parts.getOrNull(1)?.toIntOrNull() ?: return month
+    val names = listOf(
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    )
+    return "${names.getOrElse(m - 1) { month }} ${parts[0]}"
 }
 
 /** "2026-09" shifted by whole months, wrapping the year. */

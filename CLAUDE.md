@@ -228,7 +228,16 @@ All four bottom-nav tabs and the AI chat are now real screens, ported from their
 - **Budget** (`ui/budget/BudgetScreen.kt`) - month stepper, overall roll-up, per-category progress with delete. A `budgets` table was added to Room (same columns as the old `BudgetEntity`). **`spentAmount` is computed from the expenses table rather than stored**, unlike the old schema: keeping a stored copy in sync needs a write on every expense change and can drift. "+ Set Budget" splits the profile figure across categories, as onboarding's budget step did; the old per-category editor screen is not migrated.
 - **Settings** (`ui/settings/SettingsScreen.kt`) - profile row and the toggles. `AppPrefs` keeps them in the old app's separate `"settings"` store. Dark Theme takes effect immediately (the preference is lifted into state in `App.kt`). **Export Data and SIP Calculator are shown but inert** - separate screens, not migrated. **Floating Voice Quick-Add only records the preference**: it needs an Android overlay service, which has no iOS equivalent at all.
 - **Fixoo chat** (`ui/chat/ChatScreen.kt`) - the shared `GroqChatAssistant` ported on day one finally has a UI. `ChatEngine` builds the DATA summary from Room that the old `ChatViewModel` assembled. **Only the Groq tier is migrated**: the old app tried Gemini first through the Firebase AI SDK, which is Android-only. Plan section 6.2 has the REST route when it is wanted.
-- **Analytics is still a placeholder** - it is the one screen with no reference screenshot.
+- **Analytics** (`ui/analytics/AnalyticsScreen.kt`) - six months of spend as bars plus the month's categories ranked, both drawn as plain Boxes for the same reason as Home's donut.
+- **Set Budget dialog**, **Export Data dialog** and the **SIP Calculator** screen are ported too. Export itself is **not** wired: writing a CSV and handing it to a share sheet is platform work (SAF on Android, `UIActivityViewController` on iOS) with no shared implementation.
+
+## Sizing across devices
+
+`ui/Responsive.kt` wraps the whole app and scales **`LocalDensity`** from the window width against a 430dp design baseline, clamped to 0.82–1.0. Every screen was laid out against the large simulator, so on a narrower phone the same dp values ate more of the screen and read as oversized; scaling density once at the root shrinks `dp` and `sp` together and keeps every screen's proportions, instead of needing size variants in each composable. `fontScale` is left alone so the user's own text-size setting still applies.
+
+Because of this, **do not "fix" an oversized screen by hand-tuning its dp values** - check what the scale is doing first.
+
+The bottom bar carries **icons with labels**. An earlier pass removed the labels to match the reference screenshots; the labels were wanted, so they are back.
 
 **The Groq API key is generated into shared source from `local.properties`** by the `generateSecrets` Gradle task - KMP has no `BuildConfig`, and the key should not be committed. Copy `GROQ_API_KEY` into `local.properties` on any new machine or the chat silently fails.
 

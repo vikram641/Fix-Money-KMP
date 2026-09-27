@@ -33,7 +33,7 @@ import org.koin.compose.koinInject
  * iOS equivalent at all, so its toggle only records the preference.
  */
 @Composable
-fun SettingsScreen(onDarkModeChanged: (Boolean) -> Unit) {
+fun SettingsScreen(onDarkModeChanged: (Boolean) -> Unit, onOpenSip: () -> Unit = {}) {
     val colors = AppTheme.colors
     val prefs: OnboardingPrefs = koinInject()
     val appPrefs: AppPrefs = koinInject()
@@ -43,6 +43,7 @@ fun SettingsScreen(onDarkModeChanged: (Boolean) -> Unit) {
     var dark by remember { mutableStateOf(appPrefs.darkMode() ?: true) }
     var alerts by remember { mutableStateOf(appPrefs.budgetAlerts()) }
     var voice by remember { mutableStateOf(appPrefs.voiceBubble()) }
+    var showExport by remember { mutableStateOf(false) }
 
     Column(
         Modifier.fillMaxSize().statusBarsPadding()
@@ -100,11 +101,15 @@ fun SettingsScreen(onDarkModeChanged: (Boolean) -> Unit) {
             RowDivider()
             ValueRow("💱", "Currency", CurrencyConstants.byCode(currency).code)
             RowDivider()
-            ChevronRow("📤", "Export Data")
+            ChevronRow("📤", "Export Data") { showExport = true }
             RowDivider()
-            ChevronRow("📈", "SIP Calculator")
+            ChevronRow("📈", "SIP Calculator", onOpenSip)
         }
         Spacer(Modifier.height(30.dp))
+    }
+
+    if (showExport) {
+        ExportDataDialog(onDismiss = { showExport = false })
     }
 }
 
@@ -173,11 +178,12 @@ private fun ValueRow(glyph: String, title: String, value: String) {
 }
 
 @Composable
-private fun ChevronRow(glyph: String, title: String) {
+private fun ChevronRow(glyph: String, title: String, onClick: () -> Unit = {}) {
     val colors = AppTheme.colors
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().clickable { }.padding(horizontal = 16.dp, vertical = 14.dp)
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
         SettingIcon(glyph)
         Spacer(Modifier.width(14.dp))

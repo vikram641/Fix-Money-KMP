@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import com.fixmoney.shared.onboarding.AppPrefs
 import com.fixmoney.shared.onboarding.OnboardingPrefs
 import com.fixmoney.ui.chat.ChatScreen
+import com.fixmoney.ui.settings.SipCalculatorScreen
 import com.fixmoney.ui.expense.AddExpenseScreen
 import com.fixmoney.ui.home.DashboardScreen
 import com.fixmoney.ui.onboarding.*
@@ -32,8 +33,9 @@ fun App() {
     // preference is lifted into state here rather than read per-composition.
     var darkOverride by remember { mutableStateOf(appPrefs.darkMode() ?: systemDark) }
 
-    FixMoneyTheme(darkTheme = darkOverride) {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    ResponsiveUi {
+        FixMoneyTheme(darkTheme = darkOverride) {
+            Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             val prefs: OnboardingPrefs = koinInject()
             val navController = rememberNavController()
             val state = remember { OnboardingState(prefs) }
@@ -108,8 +110,12 @@ fun App() {
                     DashboardScreen(
                         onAddExpense = { navController.navigate(Routes.ADD_EXPENSE) },
                         onAskAi = { navController.navigate(Routes.CHAT) },
-                        onDarkModeChanged = { darkOverride = it }
+                        onDarkModeChanged = { darkOverride = it },
+                        onOpenSip = { navController.navigate(Routes.SIP) }
                     )
+                }
+                composable(Routes.SIP) {
+                    SipCalculatorScreen(onBack = { navController.popBackStack() })
                 }
                 composable(Routes.CHAT) {
                     ChatScreen(onBack = { navController.popBackStack() })
@@ -117,6 +123,7 @@ fun App() {
                 composable(Routes.ADD_EXPENSE) {
                     AddExpenseScreen(onClose = { navController.popBackStack() })
                 }
+            }
             }
         }
     }
