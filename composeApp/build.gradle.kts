@@ -39,6 +39,8 @@ kotlin {
             implementation(libs.koin.compose)
             implementation(libs.koin.compose.viewmodel)
             implementation(libs.navigation.compose)
+            implementation(libs.compottie)
+            implementation(libs.compottie.resources)
         }
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
@@ -54,6 +56,13 @@ kotlin {
 val keystoreProperties = Properties().apply {
     val file = rootProject.file("keystore.properties")
     if (file.exists()) file.inputStream().use { load(it) }
+}
+
+// Without this the generated class lands in `fix_money_kmp.composeapp.
+// generated.resources`, derived from the root project name.
+compose.resources {
+    publicResClass = true
+    packageOfResClass = "com.fixmoney.resources"
 }
 
 android {
