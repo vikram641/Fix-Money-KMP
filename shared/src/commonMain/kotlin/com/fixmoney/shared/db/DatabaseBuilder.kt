@@ -15,6 +15,9 @@ expect class DatabaseBuilderFactory {
 
 fun buildDatabase(factory: DatabaseBuilderFactory): FixMoneyDatabase =
     factory.create()
+        // No released version has shipped yet, so there is nothing to migrate
+        // from; revisit before the first Play Store upload.
+        .fallbackToDestructiveMigration(dropAllTables = true)
         .setDriver(BundledSQLiteDriver())
         .setQueryCoroutineContext(Dispatchers.Default)
         .build()

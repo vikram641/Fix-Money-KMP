@@ -19,6 +19,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fixmoney.resources.*
 import com.fixmoney.ui.AppTheme
+import com.fixmoney.ui.budget.BudgetScreen
+import com.fixmoney.ui.expense.ExpensesScreen
+import com.fixmoney.ui.settings.SettingsScreen
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
@@ -36,15 +39,22 @@ enum class DashboardTab(val label: String, val icon: DrawableResource) {
 }
 
 @Composable
-fun DashboardScreen(onAddExpense: () -> Unit = {}) {
+fun DashboardScreen(
+    onAddExpense: () -> Unit = {},
+    onAskAi: () -> Unit = {},
+    onDarkModeChanged: (Boolean) -> Unit = {}
+) {
     val colors = AppTheme.colors
     var tab by remember { mutableStateOf(DashboardTab.Home) }
 
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) {
             when (tab) {
-                DashboardTab.Home -> HomeScreen(onAddExpense = onAddExpense)
-                else -> ComingSoon(tab.label)
+                DashboardTab.Home -> HomeScreen(onAddExpense = onAddExpense, onAskAi = onAskAi)
+                DashboardTab.Expenses -> ExpensesScreen()
+                DashboardTab.Budget -> BudgetScreen()
+                DashboardTab.Settings -> SettingsScreen(onDarkModeChanged = onDarkModeChanged)
+                DashboardTab.Analytics -> ComingSoon(tab.label)
             }
         }
 

@@ -220,6 +220,18 @@ The "Ask AI" button is `ai.json` played through Compottie, as the old Home did w
 
 Home now reads spend from Room reactively, so a new expense appears without a refresh. `weekSpent` is still 0: the week window needs real date arithmetic, which the minimal `platform/DateTime.kt` does not do. That is where kotlinx-datetime would finally earn its place.
 
+## Feature 4 — the remaining tabs (2026-09-27)
+
+All four bottom-nav tabs and the AI chat are now real screens, ported from their layouts and the screenshots in `~/Downloads/ss_for_fixmoney/`.
+
+- **Expenses** (`ui/expense/ExpensesScreen.kt`) - category filter chips built from whatever categories the data actually contains, search over note and category, rows grouped by date with a per-day total.
+- **Budget** (`ui/budget/BudgetScreen.kt`) - month stepper, overall roll-up, per-category progress with delete. A `budgets` table was added to Room (same columns as the old `BudgetEntity`). **`spentAmount` is computed from the expenses table rather than stored**, unlike the old schema: keeping a stored copy in sync needs a write on every expense change and can drift. "+ Set Budget" splits the profile figure across categories, as onboarding's budget step did; the old per-category editor screen is not migrated.
+- **Settings** (`ui/settings/SettingsScreen.kt`) - profile row and the toggles. `AppPrefs` keeps them in the old app's separate `"settings"` store. Dark Theme takes effect immediately (the preference is lifted into state in `App.kt`). **Export Data and SIP Calculator are shown but inert** - separate screens, not migrated. **Floating Voice Quick-Add only records the preference**: it needs an Android overlay service, which has no iOS equivalent at all.
+- **Fixoo chat** (`ui/chat/ChatScreen.kt`) - the shared `GroqChatAssistant` ported on day one finally has a UI. `ChatEngine` builds the DATA summary from Room that the old `ChatViewModel` assembled. **Only the Groq tier is migrated**: the old app tried Gemini first through the Firebase AI SDK, which is Android-only. Plan section 6.2 has the REST route when it is wanted.
+- **Analytics is still a placeholder** - it is the one screen with no reference screenshot.
+
+**The Groq API key is generated into shared source from `local.properties`** by the `generateSecrets` Gradle task - KMP has no `BuildConfig`, and the key should not be committed. Copy `GROQ_API_KEY` into `local.properties` on any new machine or the chat silently fails.
+
 ## Blockers and not-done
 
 - **Android has never been run.** (iOS is verified; this is the gap.) The debug APK builds (`com.vikram641.expensetracker.kmp`, 11 MB) but no device has been connected yet, so the Android side is build-verified only — unlike iOS, nothing has been seen running.

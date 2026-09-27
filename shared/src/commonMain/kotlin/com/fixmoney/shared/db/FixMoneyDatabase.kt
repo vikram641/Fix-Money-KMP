@@ -8,13 +8,14 @@ import androidx.room.RoomDatabaseConstructor
 /**
  * Room, shared across both platforms (Room supports KMP from 2.7).
  *
- * Only `expenses` so far; the old database also had budgets, categories and
+ * `expenses` and `budgets` so far; the old database also had categories and
  * the two pending-sync queues. They get added as their screens are migrated.
  */
-@Database(entities = [ExpenseEntity::class], version = 1)
+@Database(entities = [ExpenseEntity::class, BudgetEntity::class], version = 2)
 @ConstructedBy(FixMoneyDatabaseConstructor::class)
 abstract class FixMoneyDatabase : RoomDatabase() {
     abstract fun expenseDao(): ExpenseDao
+    abstract fun budgetDao(): BudgetDao
 }
 
 /** Room's KSP processor generates the `actual` implementations per platform. */

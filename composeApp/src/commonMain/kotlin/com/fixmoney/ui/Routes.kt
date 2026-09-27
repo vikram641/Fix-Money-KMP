@@ -12,4 +12,5 @@ object Routes {
     const val ALL_SET = "all_set"
     const val HOME = "home"
     const val ADD_EXPENSE = "add_expense"
+    const val CHAT = "chat"
 }

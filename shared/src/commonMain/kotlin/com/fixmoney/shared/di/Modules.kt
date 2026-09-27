@@ -1,11 +1,14 @@
 package com.fixmoney.shared.di
 
+import com.fixmoney.shared.ai.ChatEngine
 import com.fixmoney.shared.data.CategoryRepository
 import com.fixmoney.shared.db.DatabaseBuilderFactory
 import com.fixmoney.shared.db.FixMoneyDatabase
 import com.fixmoney.shared.db.buildDatabase
+import com.fixmoney.shared.expense.BudgetRepository
 import com.fixmoney.shared.expense.ExpenseRepository
 import com.fixmoney.shared.home.HomeStateFactory
+import com.fixmoney.shared.onboarding.AppPrefs
 import com.fixmoney.shared.onboarding.OnboardingPrefs
 import com.fixmoney.shared.platform.httpClient
 import io.ktor.client.HttpClient
@@ -30,10 +33,14 @@ val sharedModule = module {
         }
     }
     single { OnboardingPrefs(get()) }
+    single { AppPrefs(get()) }
     single<FixMoneyDatabase> { buildDatabase(get()) }
     single { get<FixMoneyDatabase>().expenseDao() }
+    single { get<FixMoneyDatabase>().budgetDao() }
     single { CategoryRepository(get()) }
     single { ExpenseRepository(get()) }
+    single { BudgetRepository(get(), get()) }
+    single { ChatEngine(get(), get()) }
     single { HomeStateFactory(get(), get()) }
 }
 

@@ -1,3 +1,4 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -10,6 +11,37 @@ plugins {
 
 room {
     schemaDirectory("$projectDir/schemas")
+}
+
+/**
+ * KMP has no BuildConfig, so the Groq key is generated into a source file from
+ * local.properties (gitignored) instead of being committed.
+ */
+val generateSecrets by tasks.registering {
+    val outputDir = layout.buildDirectory.dir("generated/secrets")
+    outputs.dir(outputDir)
+    val key = Properties().apply {
+        val f = rootProject.file("local.properties")
+        if (f.exists()) f.inputStream().use { load(it) }
+    }.getProperty("GROQ_API_KEY", "")
+    doLast {
+        val dir = outputDir.get().asFile.resolve("com/fixmoney/shared/ai")
+        dir.mkdirs()
+        dir.resolve("Secrets.kt").writeText(
+            """
+            package com.fixmoney.shared.ai
+
+            /** GENERATED from local.properties - do not edit. */
+            internal object Secrets {
+                const val GROQ_API_KEY: String = "$key"
+            }
+            """.trimIndent() + "\n"
+        )
+    }
+}
+
+kotlin.sourceSets.commonMain {
+    kotlin.srcDir(generateSecrets)
 }
 
 /**
