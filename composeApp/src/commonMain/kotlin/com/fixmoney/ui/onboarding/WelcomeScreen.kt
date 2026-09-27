@@ -1,99 +1,83 @@
 package com.fixmoney.ui.onboarding
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.fixmoney.ui.AppTheme
 import com.fixmoney.resources.Res
 import com.fixmoney.resources.ic_fixmoney_logo
-import io.github.alexzhirkevich.compottie.Compottie
-import io.github.alexzhirkevich.compottie.LottieCompositionSpec
-import io.github.alexzhirkevich.compottie.rememberLottieComposition
-import io.github.alexzhirkevich.compottie.rememberLottiePainter
-import org.jetbrains.compose.resources.ExperimentalResourceApi
+import com.fixmoney.resources.ic_wallet_outline
+import com.fixmoney.ui.AppTheme
+import com.fixmoney.ui.components.IconBadge
+import com.fixmoney.ui.components.PrimaryButton
 import org.jetbrains.compose.resources.painterResource
 
-/**
- * Port of `fragment_onboarding_welcome.xml`, now using the real assets copied
- * from the old project: the logo drawable and the `coin.json` Lottie that the
- * old app played on this screen.
- */
-@OptIn(ExperimentalResourceApi::class)
+/** Port of `fragment_onboarding_welcome.xml`. */
 @Composable
 fun WelcomeScreen(onGetStarted: () -> Unit) {
     val colors = AppTheme.colors
 
-    val composition by rememberLottieComposition {
-        LottieCompositionSpec.JsonString(
-            Res.readBytes("files/lottie/coin.json").decodeToString()
-        )
-    }
-
     Column(
-        modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 28.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 24.dp)
     ) {
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(28.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Image(
-                painter = painterResource(Res.drawable.ic_fixmoney_logo),
-                contentDescription = null,
-                modifier = Modifier.size(26.dp)
-            )
-            Spacer(Modifier.width(8.dp))
-            Text("FixMoney", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
+            Box(
+                modifier = Modifier.size(44.dp).clip(CircleShape).background(colors.accent),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(Res.drawable.ic_fixmoney_logo),
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Spacer(Modifier.width(14.dp))
+            Text("FixMoney", fontSize = 21.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
         }
 
         Spacer(Modifier.weight(1f))
 
-        Image(
-            painter = rememberLottiePainter(
-                composition = composition,
-                iterations = Compottie.IterateForever
-            ),
-            contentDescription = null,
-            modifier = Modifier.size(220.dp)
+        IconBadge(
+            icon = Res.drawable.ic_wallet_outline,
+            size = 160.dp,
+            iconSize = 72.dp,
+            corner = 40.dp,
+            modifier = Modifier.align(Alignment.CenterHorizontally)
         )
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(52.dp))
         Text(
             text = "Take control of your money",
-            fontSize = 27.sp,
-            lineHeight = 34.sp,
+            fontSize = 30.sp,
+            lineHeight = 40.sp,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
-            color = colors.textPrimary
+            color = colors.textPrimary,
+            modifier = Modifier.fillMaxWidth()
         )
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(34.dp))
         Text(
             text = "Track expenses, scan receipts, and hit your budget goals — all in one place.",
-            fontSize = 14.5.sp,
-            lineHeight = 21.sp,
+            fontSize = 16.sp,
+            lineHeight = 26.sp,
             textAlign = TextAlign.Center,
-            color = colors.textSecondary
+            color = colors.textSecondary,
+            modifier = Modifier.fillMaxWidth()
         )
 
         Spacer(Modifier.weight(1f))
 
-        Button(
-            onClick = onGetStarted,
-            modifier = Modifier.fillMaxWidth().height(54.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = colors.accent)
-        ) {
-            Text("Get Started", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = colors.white)
-        }
-        Spacer(Modifier.height(32.dp))
+        PrimaryButton("Get Started", onGetStarted)
+        Spacer(Modifier.height(40.dp))
     }
 }

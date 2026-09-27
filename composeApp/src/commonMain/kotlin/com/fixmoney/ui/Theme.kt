@@ -257,6 +257,6 @@ fun FixMoneyTheme(
     }
 
     CompositionLocalProvider(LocalAppColors provides colors) {
-        MaterialTheme(colorScheme = scheme, content = content)
+        MaterialTheme(colorScheme = scheme, typography = poppinsTypography(), content = content)
     }
 }

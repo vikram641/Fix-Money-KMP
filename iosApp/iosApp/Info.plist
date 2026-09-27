@@ -18,6 +18,10 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<!-- Compose Multiplatform refuses to start without this: without it the app
+	     is capped to 60fps on ProMotion iPhones. -->
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchScreen</key>

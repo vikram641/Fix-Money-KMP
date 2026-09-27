@@ -1,87 +1,91 @@
 package com.fixmoney.ui.onboarding
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.graphics.SolidColor
+import com.fixmoney.resources.Res
+import com.fixmoney.resources.ic_person_outline
+import com.fixmoney.ui.AppTheme
+import com.fixmoney.ui.components.IconBadge
+import com.fixmoney.ui.components.PrimaryButton
+import com.fixmoney.ui.components.StepHeader
 
-/**
- * Port of `fragment_onboarding_setup_name.xml` - step 1 of 3.
- *
- * The old XML had a layout bug where the subtext and the field below it were
- * both constrained to the headline, so they overlapped (see the old app's
- * CLAUDE.md). A Column can't reproduce that class of bug at all.
- */
+/** Port of `fragment_onboarding_setup_name.xml` - step 1 of 3. */
 @Composable
-fun SetupNameScreen(onBack: () -> Unit, onContinue: (String) -> Unit) {
-    var name by remember { mutableStateOf("") }
-    val canContinue = name.isNotBlank()
+fun SetupNameScreen(
+    state: OnboardingState,
+    onBack: () -> Unit,
+    onContinue: () -> Unit
+) {
+    val colors = AppTheme.colors
 
     Column(
-        modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 28.dp)
+        modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 24.dp)
     ) {
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(20.dp))
+        StepHeader(step = 1, total = 3, onBack = onBack)
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(
-                onClick = onBack,
-                modifier = Modifier.size(44.dp),
-                shape = RoundedCornerShape(22.dp),
-                contentPadding = PaddingValues(0.dp)
-            ) { Text("‹", fontSize = 22.sp) }
+        Spacer(Modifier.height(48.dp))
+        IconBadge(Res.drawable.ic_person_outline, size = 74.dp, iconSize = 34.dp, corner = 22.dp)
 
-            Spacer(Modifier.width(16.dp))
-            LinearProgressIndicator(
-                progress = { 1f / 3f },
-                modifier = Modifier.weight(1f).height(4.dp)
-            )
-            Spacer(Modifier.width(16.dp))
-            Text("1 / 3", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-
-        Spacer(Modifier.height(36.dp))
+        Spacer(Modifier.height(26.dp))
         Text(
-            text = "What should we\ncall you?",
-            fontSize = 26.sp,
-            lineHeight = 33.sp,
+            "What should we\ncall you?",
+            fontSize = 28.sp,
+            lineHeight = 38.sp,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface
+            color = colors.textPrimary
         )
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp))
         Text(
-            text = "We'll use this to personalize your dashboard and greetings.",
-            fontSize = 14.sp,
-            lineHeight = 20.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            "We'll use this to personalize your dashboard and greetings.",
+            fontSize = 15.sp,
+            lineHeight = 23.sp,
+            color = colors.textSecondary
         )
 
-        Spacer(Modifier.height(32.dp))
-        Text("Your name", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = name,
-            onValueChange = { name = it },
-            placeholder = { Text("e.g. Alex") },
-            singleLine = true,
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth()
-        )
+        Spacer(Modifier.height(34.dp))
+        Text("Your name", fontSize = 15.sp, fontWeight = FontWeight.Medium, color = colors.textSecondary)
+        Spacer(Modifier.height(12.dp))
+
+        // BasicTextField rather than OutlinedTextField: the old field was a flat
+        // filled box (`bg_field_input.xml`) with no outline and no floating label.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(66.dp)
+                .background(colors.inputBg, RoundedCornerShape(18.dp))
+                .padding(horizontal = 20.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            if (state.name.isEmpty()) {
+                Text("e.g. Alex", fontSize = 18.sp, color = colors.textHint)
+            }
+            BasicTextField(
+                value = state.name,
+                onValueChange = { state.name = it },
+                singleLine = true,
+                textStyle = LocalTextStyle.current.copy(fontSize = 18.sp, color = colors.textPrimary),
+                cursorBrush = SolidColor(colors.accent),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
 
         Spacer(Modifier.weight(1f))
-
-        Button(
-            onClick = { onContinue(name.trim()) },
-            enabled = canContinue,
-            modifier = Modifier.fillMaxWidth().height(54.dp),
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            Text("Continue", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-        }
-        Spacer(Modifier.height(32.dp))
+        PrimaryButton("Continue", onContinue, enabled = state.name.isNotBlank())
+        Spacer(Modifier.height(40.dp))
     }
 }

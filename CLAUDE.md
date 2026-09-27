@@ -87,6 +87,8 @@ Without `keystore.properties` present, release builds come out unsigned and the 
   ```
 
   **This is a shrinking window.** The ecosystem is steadily dropping Intel-simulator support, so expect more libraries to be unusable. The real escape hatch is to stop testing iOS on this Intel Mac's simulator and test on a **physical iPhone** (`iosArm64`) instead — a free Apple ID grants 7-day development provisioning, no paid account needed. Worth doing before the library ceiling blocks something that actually matters.
+- **Compose Multiplatform refuses to start without `CADisableMinimumFrameDurationOnPhone` in `Info.plist`.** It throws `IllegalStateException` at launch, which reads as an instant crash back to the home screen.
+- **Vector drawables must use literal hex colours.** compose-resources' vector parser cannot resolve `@color/...` or `@android:color/...` references and throws `IllegalArgumentException: Invalid color value @android:color/transparent` at *render* time — the app launches to a black screen with no build error. All 19 affected drawables were converted on import; convert any new one the same way.
 - **Do not trust Gradle module metadata for target support — compile instead.** Reading `*.module` files suggested navigation-compose and even Compose Multiplatform lacked `iosX64`; both actually compile for it fine. The metadata describes alias artifacts, not what resolution really pulls in.
 - **This is an Intel i7 Mac** (i7-1068NG7, macOS 26.6.2), so the simulator runs **x86_64** — Kotlin target `iosX64`, not `iosSimulatorArm64`. `lipo -info` on the built app binary should say `x86_64`. Keep `iosX64()` in both modules' target lists; dropping it breaks simulator runs on this machine.
 
@@ -117,9 +119,27 @@ The iOS 17.5 runtime is a 7.34 GB download (`xcodebuild -downloadPlatform iOS -b
 
 Koin starts from `FixMoneyApp.onCreate()` on Android and from `MainViewController()` on iOS (no Application class there), guarded by a flag since SwiftUI can recreate the representable.
 
-`WelcomeScreen` renders the real `ic_fixmoney_logo` drawable and plays `coin.json` through Compottie — verified on the simulator, so the whole asset pipeline (drawables + Lottie) works on iOS.
+## Feature 1 — Onboarding (complete 2026-09-27)
 
-**Screens built**: `WelcomeScreen` and `SetupNameScreen` (ports of `fragment_onboarding_welcome.xml` / `fragment_onboarding_setup_name.xml`, copy kept identical), plus `HomePlaceholderScreen`. End-to-end flow confirmed on the simulator: typing a name → Continue → the name persisted to NSUserDefaults → relaunch started at Home (not Welcome) and greeted the saved name. That exercises Compose input → Koin → shared prefs → platform storage → the start-destination gate.
+All 8 screens of the old onboarding flow, ported from their XML layouts and cross-checked against screenshots of the running old app (`~/Downloads/ss_for_fixmoney/`):
+
+`WelcomeScreen` → `FeatureScreen` ×3 → `SetupNameScreen` → `SetupBudgetScreen` → `SetupCurrencyScreen` → `AllSetScreen` → Home.
+
+- **`FeatureScreen` is one composable for all three pages**, with content in a `FeaturePage` enum — the direct equivalent of the old app reusing one Fragment with nav-graph `<argument>` defaults. Copy, button labels and the per-page animation flag are carried over verbatim.
+- `OnboardingState` replaces the activity-scoped `OnboardingViewModel`. Defaults match: ₹25,000, INR. Only `AllSetScreen` commits the profile, exactly as `AllSetFragment` was the sole caller of `completeOnboarding()`.
+- Poppins is now applied app-wide through `poppinsTypography()`, matching the old theme's `android:fontFamily`.
+- `IconBadge`, `StepHeader` and `PrimaryButton` (`ui/components/Common.kt`) rebuild the old `bg_icon_badge_gradient.xml`, back-circle + progress row, and pill `MaterialButton` as composables.
+
+### Deliberate differences from the old app
+
+- **`SetupBudgetScreen` scrolls.** The old `ConstraintLayout` had no ScrollView — it only ever fitted because the reference device is 20:9. On a 16:9 screen the category row and Continue button fell off the bottom. The body now scrolls with the button pinned; on a tall device it looks identical.
+- **Category chips come from `DefaultCategories`**, a hardcoded copy of the 7 documents seeded into Firestore (same ids, names, colours, icon names). The old app read them from Firestore via Room. Swap the source when the data layer lands — everything already deals in `Category`.
+- **`OnboardingState.complete()` does not write `BudgetEntity` rows.** The old `completeOnboarding()` also created per-category budget rows for the current month so the number reached the Budget screen and Home's card. That half needs Room.
+- Category icon names are mapped to drawables explicitly in `SetupBudgetScreen.categoryIcon()`. The old app used `resources.getIdentifier(...)`, which has no compose-resources equivalent — accessors are generated, so the mapping must be static.
+
+### Verified
+
+Both targets build (`checkAll`), and Welcome / Feature / SetupName / SetupBudget / AllSet were each rendered on the iPhone SE iOS 17.5 simulator in dark mode and compared against the old app's screenshots. Interaction (tapping through) has not been machine-verified — see "Driving the simulator".
 
 **One feature ported**: `shared/src/commonMain/.../ai/GroqChatAssistant.kt` — the old app's Groq chat fallback, rewritten from OkHttp + `org.json` to Ktor + kotlinx.serialization. Same prompt text, same model (`openai/gpt-oss-20b`), same 20s timeout, same 429→`QuotaExceeded` handling. Takes `apiKey` as a parameter (shared code has no `BuildConfig`). Groq's live response shape was re-verified against the new `@Serializable` DTOs by curl. **Never run at runtime on either platform** — compile- and contract-verified only.
 
