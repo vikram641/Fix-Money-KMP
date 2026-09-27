@@ -10,6 +10,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.fixmoney.shared.onboarding.OnboardingPrefs
+import com.fixmoney.ui.home.DashboardScreen
 import com.fixmoney.ui.onboarding.*
 import org.koin.compose.koinInject
 
@@ -30,23 +31,23 @@ fun App() {
             val start = remember { if (prefs.isOnboardingComplete()) Routes.HOME else Routes.WELCOME }
 
             // "Skip" on any feature screen jumps to setupName, as the old app did.
-            val skipToSetup: () -> Unit = { navController.navigate(Routes.SETUP_NAME) }
+            val skipToSetup: () -> Unit = { navController.navigate(Routes.SETUP_NAME) { launchSingleTop = true } }
 
             NavHost(navController = navController, startDestination = start) {
                 composable(Routes.WELCOME) {
-                    WelcomeScreen(onGetStarted = { navController.navigate(Routes.FEATURE_SCAN) })
+                    WelcomeScreen(onGetStarted = { navController.navigate(Routes.FEATURE_SCAN) { launchSingleTop = true } })
                 }
                 composable(Routes.FEATURE_SCAN) {
                     FeatureScreen(
                         page = FeaturePage.Scan,
-                        onNext = { navController.navigate(Routes.FEATURE_AUTODEBIT) },
+                        onNext = { navController.navigate(Routes.FEATURE_AUTODEBIT) { launchSingleTop = true } },
                         onSkip = skipToSetup
                     )
                 }
                 composable(Routes.FEATURE_AUTODEBIT) {
                     FeatureScreen(
                         page = FeaturePage.AutoDebit,
-                        onNext = { navController.navigate(Routes.FEATURE_ALERTS) },
+                        onNext = { navController.navigate(Routes.FEATURE_ALERTS) { launchSingleTop = true } },
                         onSkip = skipToSetup
                     )
                 }
@@ -61,21 +62,21 @@ fun App() {
                     SetupNameScreen(
                         state = state,
                         onBack = { navController.popBackStack() },
-                        onContinue = { navController.navigate(Routes.SETUP_BUDGET) }
+                        onContinue = { navController.navigate(Routes.SETUP_BUDGET) { launchSingleTop = true } }
                     )
                 }
                 composable(Routes.SETUP_BUDGET) {
                     SetupBudgetScreen(
                         state = state,
                         onBack = { navController.popBackStack() },
-                        onContinue = { navController.navigate(Routes.SETUP_CURRENCY) }
+                        onContinue = { navController.navigate(Routes.SETUP_CURRENCY) { launchSingleTop = true } }
                     )
                 }
                 composable(Routes.SETUP_CURRENCY) {
                     SetupCurrencyScreen(
                         state = state,
                         onBack = { navController.popBackStack() },
-                        onFinish = { navController.navigate(Routes.ALL_SET) }
+                        onFinish = { navController.navigate(Routes.ALL_SET) { launchSingleTop = true } }
                     )
                 }
                 composable(Routes.ALL_SET) {
@@ -91,11 +92,8 @@ fun App() {
                         }
                     )
                 }
-                composable(Routes.HOME) { HomePlaceholderScreen() }
+                composable(Routes.HOME) { DashboardScreen() }
             }
         }
     }
 }
-
-/** Proves at a glance which platform the shared UI is actually running on. */
-expect fun platformName(): String

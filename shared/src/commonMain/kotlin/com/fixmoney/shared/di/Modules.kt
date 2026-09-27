@@ -1,6 +1,7 @@
 package com.fixmoney.shared.di
 
 import com.fixmoney.shared.data.CategoryRepository
+import com.fixmoney.shared.home.HomeStateFactory
 import com.fixmoney.shared.onboarding.OnboardingPrefs
 import com.fixmoney.shared.platform.httpClient
 import io.ktor.client.HttpClient
@@ -26,6 +27,7 @@ val sharedModule = module {
     }
     single { OnboardingPrefs(get()) }
     single { CategoryRepository(get()) }
+    single { HomeStateFactory(get()) }
 }
 
 /** Provides the platform's Settings implementation (SharedPreferences / NSUserDefaults). */

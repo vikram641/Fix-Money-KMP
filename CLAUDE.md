@@ -159,6 +159,26 @@ Categories confirmed arriving from Firestore on iOS, not the fallback — the si
 
 `expect`/`actual` is proven working via `shared/.../platform/Platform.kt` (`httpClient()` → OkHttp/Darwin, `logWarn()` → `android.util.Log`/`NSLog`). Same mechanism camera, OCR, ads and background sync will need.
 
+## Feature 2 — Home (in progress)
+
+`ui/home/DashboardScreen.kt` is the five-tab shell from the old `bottom_nav_menu.xml`; only the Home tab is built, the other four say "Not migrated yet".
+
+`ui/home/HomeScreen.kt` ports `fragment_home.xml` in its **empty state**: greeting + month + avatar initials, the budget card (spent / progress / "n% to X" / This Week / Remaining), the "No expenses yet" card, and the FAB. Greeting buckets and the initials logic match `HomeViewModel` exactly.
+
+There is no expense data source yet (Room), so spend is 0 and the empty state always shows — which is what a fresh install saw in the old app too. **Not yet ported**: the AI insight card, pie chart + legend, the "Recent" list, offline banner, pull-to-refresh, month picker, AdMob banner.
+
+Date handling is `expect`/`actual` (`shared/platform/DateTime.kt`) rather than kotlinx-datetime — only the current hour and `yyyy-MM` are needed, and every third-party KMP library so far has had to clear an `iosX64` + Kotlin-version gate for no benefit here.
+
+**`bottomNavBg` is the wrong token for the nav bar** — it is `#FFFFFF` in `colors.xml` with no `values-night` override, so it stayed white in dark mode. Use `bgCard`. Other tokens without a night variant will have the same trap.
+
+## Testing on Android
+
+**The Android emulator is not usable on this machine.** `Pixel_7_Pro_API_35` boots but quits within minutes (it logs a clean `Saving snapshot 'default_boot'` and exits), repeatedly, across hardware and software GPU. With `-gpu swiftshader_indirect` it survives longer but is too slow to accept input — taps are dropped and SystemUI ANRs.
+
+While it was briefly alive, real taps confirmed: forward navigation works, and **the in-app back circle on the setup screens works** (SetupName → Alerts). One observation suggested the *system* back button moved forward rather than back, but that could not be reproduced before the emulator died, and dropped input makes it unreliable evidence. Treat it as unconfirmed.
+
+Until this is sorted, Android verification means installing the APK on the real device.
+
 ## Blockers and not-done
 
 - **Android has never been run.** (iOS is verified; this is the gap.) The debug APK builds (`com.vikram641.expensetracker.kmp`, 11 MB) but no device has been connected yet, so the Android side is build-verified only — unlike iOS, nothing has been seen running.
