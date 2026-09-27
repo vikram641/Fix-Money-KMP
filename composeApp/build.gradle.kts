@@ -1,3 +1,4 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -41,6 +42,14 @@ kotlin {
     }
 }
 
+// Same keystore the current Play Store app is signed with
+// (~/Downloads/Expense/keystore.properties -> /Users/apple/keystores/expense-release.jks).
+// Play rejects an update signed with any other key, so this is not optional.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
 android {
     namespace = "com.fixmoney"
     compileSdk = libs.versions.compileSdk.get().toInt()
@@ -48,29 +57,51 @@ android {
     sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
     sourceSets["main"].res.srcDirs("src/androidMain/res")
 
+    signingConfigs {
+        create("release") {
+            if (keystoreProperties.containsKey("storeFile")) {
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+            }
+        }
+    }
+
     defaultConfig {
-        // Same applicationId as the live Play Store listing, so this rewrite can
-        // eventually ship as an update to the existing app rather than a new one.
+        // Same applicationId as the live Play Store listing, so this rewrite
+        // ships as an update to the existing app rather than a new one.
         applicationId = "com.vikram641.expensetracker"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "1.0"
+        // Play has versionCode 10 (1.4.1) live, so any upload must be >= 11.
+        versionCode = 11
+        versionName = "2.0"
     }
 
     buildTypes {
         debug {
             // Installs alongside the real FixMoney app on a test device instead
-            // of replacing it, so the old and new app can be compared live.
+            // of replacing it, so old and new can be compared side by side.
+            // Release keeps the exact applicationId - only debug is suffixed.
             applicationIdSuffix = ".kmp"
         }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    lint {
+        // AGP 8.7.3 ships a lint build older than Kotlin 2.2.0, and the
+        // androidx.lifecycle detector crashes on 2.2.0 metadata with
+        // "Found class KaCallableMemberCall, but interface was expected",
+        // failing every release build. Drop this once AGP is bumped.
+        disable += "NullSafeMutableLiveData"
     }
 }

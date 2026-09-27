@@ -58,8 +58,25 @@ What's actually in it: a placeholder Compose screen shared by both platforms (sh
 - **No iOS simulator runtime installed.** Xcode → Settings → Components → download an iOS runtime. Without it the app builds but can't be *launched* (`xcodebuild` reports "iOS 26.5 is not installed").
 - No Apple Developer account, so no device testing or App Store work yet. `TEAM_ID` in `iosApp/Configuration/Config.xcconfig` is deliberately empty — fill it in once there is one.
 - No DI (Koin), no Room, no navigation, no real screens. Those come as each feature gets rebuilt.
+- `NullSafeMutableLiveData` lint check is disabled in `composeApp/build.gradle.kts`: AGP 8.7.3 bundles a lint older than Kotlin 2.2.0 and its `androidx.lifecycle` detector crashes every release build. Re-enable once AGP is bumped.
 
-## IDs
+## Shipping to Play Store
 
-- Android `applicationId`: `com.vikram641.expensetracker` — same as the live Play Store listing, so this rebuild can eventually ship as an *update* rather than a separate app. Debug builds get a `.kmp` suffix so they install alongside the current app on a test device.
-- iOS bundle id: `com.vikram641.fixmoney` (set in `Config.xcconfig`).
+This rebuild is meant to go out as an **update to the existing FixMoney listing**, not a new app. Three things make that possible, and all three are already set up:
+
+| | Value | Why it matters |
+|---|---|---|
+| `applicationId` | `com.vikram641.expensetracker` | Play identifies an app by this. A different one = a separate listing, existing users never get the update. |
+| Signing key | `/Users/apple/keystores/expense-release.jks` | Play **rejects** an update signed with any other key. Verified: the release APK's cert SHA-256 (`8E:62:87:9F…F7:17`) matches the key the live app is signed with. |
+| `versionCode` | `11` | Play has 10 (1.4.1) live; an upload must be higher. |
+
+`keystore.properties` sits in the repo root and is **gitignored** — copy it from `~/Downloads/Expense/keystore.properties` on any new machine, or release builds come out unsigned.
+
+Debug builds carry a `.kmp` `applicationIdSuffix` so they install *alongside* the current Play Store app on a test device. Release builds use the exact applicationId, untouched.
+
+```bash
+./gradlew :composeApp:assembleRelease    # signed APK
+./gradlew :composeApp:bundleRelease      # .aab for Play
+```
+
+- iOS bundle id: `com.vikram641.fixmoney` (set in `iosApp/Configuration/Config.xcconfig`).
