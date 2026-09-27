@@ -1,15 +1,18 @@
 package com.fixmoney.shared.home
 
+import com.fixmoney.shared.db.ExpenseEntity
+import com.fixmoney.shared.expense.ExpenseRepository
 import com.fixmoney.shared.model.CurrencyConstants
 import com.fixmoney.shared.onboarding.OnboardingPrefs
 import com.fixmoney.shared.platform.currentHour
 import com.fixmoney.shared.platform.currentMonthApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 /**
- * What the Home screen shows. The old `HomeViewModel` pulled spend figures from
- * Room and the server; neither exists here yet, so [totalSpent] and [weekSpent]
- * are 0 and the screen renders its empty state - exactly what a fresh install
- * saw in the old app too.
+ * What the Home screen shows. Spend comes from Room now; [weekSpent] is still
+ * 0 because the week window needs real date arithmetic, which this build's
+ * deliberately minimal date layer (`platform/DateTime.kt`) does not do yet.
  */
 data class HomeUiState(
     val greeting: String,
@@ -29,16 +32,26 @@ data class HomeUiState(
     val hasExpenses: Boolean get() = totalSpent > 0
 }
 
-class HomeStateFactory(private val prefs: OnboardingPrefs) {
+class HomeStateFactory(
+    private val prefs: OnboardingPrefs,
+    private val expenses: ExpenseRepository
+) {
 
-    fun build(): HomeUiState {
+    /** Re-emits whenever the expenses table changes, so a new expense shows up
+     * on Home without a manual refresh - same behaviour as the old
+     * `HomeViewModel.recentExpenses`. */
+    fun observe(): Flow<HomeUiState> =
+        expenses.observeMonth(currentMonthApi()).map { rows -> build(rows) }
+
+    fun build(rows: List<ExpenseEntity> = emptyList()): HomeUiState {
         val name = prefs.getUserName()
+        val spent = rows.sumOf { it.amount.toIntOrNull() ?: 0 }
         return HomeUiState(
             greeting = "${greetingForHour()}\n${name?.takeIf { it.isNotBlank() } ?: "there"} 👋",
             initials = initialsFrom(name),
             month = currentMonthApi(),
             currencySymbol = CurrencyConstants.symbolFor(prefs.getCurrencyCode()),
-            totalSpent = 0,
+            totalSpent = spent,
             weekSpent = 0,
             totalBudget = prefs.getMonthlyBudget()
         )

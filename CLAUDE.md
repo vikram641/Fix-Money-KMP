@@ -195,6 +195,23 @@ While it was briefly alive, real taps confirmed: forward navigation works, and *
 
 Until this is sorted, Android verification means installing the APK on the real device.
 
+## Feature 3 — Add Expense + Room (2026-09-27)
+
+**Room is in**, shared across both platforms. Two things had to line up, as always:
+
+- **AndroidX artifacts live on Google Maven, not Maven Central.** Checking `repo1.maven.org` said Room had no `iosX64` at all, which was wrong - `dl.google.com/dl/android/maven2` has it up to 2.8.5. Verify androidx availability there.
+- **Room 2.7.2 / sqlite-bundled 2.5.2** are built with Kotlin 2.1.10, so they clear the ≤ 2.2.0 klib gate (Room 2.8.x is 2.2.0 and would also work). KSP is pinned to `2.2.0-2.0.2` to match the Kotlin version.
+
+`shared/db/` holds `FixMoneyDatabase`, `ExpenseEntity` and `ExpenseDao`. The entity keeps the old app's **exact column names and types** so an existing install's `expenses` table is readable - this ships as an update to the same listing. Only `expenses` so far; budgets, categories and the two pending-sync queues come with their screens.
+
+The database file is the only platform-specific part (`DatabaseBuilderFactory`, expect/actual): app database dir on Android, Documents on iOS. Room's KSP processor has to be added for **every** target, not just Android - see the `kspAndroid`/`kspIosX64`/… loop in `shared/build.gradle.kts`.
+
+`ExpenseRepository` is local-only; the old app also queued a server sync row, but there is no backend in this build (the old one had been running fully offline too). Ids are `local-<millis>` - there is no UUID in common Kotlin, and the server assigned real ids before.
+
+`AddExpenseScreen` ports `fragment_add_expense.xml`. Amount is whole numbers only, matching the old `amount.toInt()` validation. **Scan Receipt and Attach Photo are inert** - both need camera/photo access, the biggest expect/actual chunk left in the plan.
+
+Home now reads spend from Room reactively, so a new expense appears without a refresh. `weekSpent` is still 0: the week window needs real date arithmetic, which the minimal `platform/DateTime.kt` does not do. That is where kotlinx-datetime would finally earn its place.
+
 ## Blockers and not-done
 
 - **Android has never been run.** (iOS is verified; this is the gap.) The debug APK builds (`com.vikram641.expensetracker.kmp`, 11 MB) but no device has been connected yet, so the Android side is build-verified only — unlike iOS, nothing has been seen running.

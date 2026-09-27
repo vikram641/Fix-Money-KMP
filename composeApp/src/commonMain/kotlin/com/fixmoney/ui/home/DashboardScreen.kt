@@ -36,14 +36,14 @@ enum class DashboardTab(val label: String, val icon: DrawableResource) {
 }
 
 @Composable
-fun DashboardScreen() {
+fun DashboardScreen(onAddExpense: () -> Unit = {}) {
     val colors = AppTheme.colors
     var tab by remember { mutableStateOf(DashboardTab.Home) }
 
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) {
             when (tab) {
-                DashboardTab.Home -> HomeScreen()
+                DashboardTab.Home -> HomeScreen(onAddExpense = onAddExpense)
                 else -> ComingSoon(tab.label)
             }
         }

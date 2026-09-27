@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.fixmoney.resources.Res
 import com.fixmoney.resources.ic_sparkle
 import com.fixmoney.resources.ic_wallet_empty
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fixmoney.shared.home.HomeStateFactory
 import com.fixmoney.ui.AppTheme
 import com.fixmoney.ui.onboarding.formatIndian
@@ -44,7 +46,7 @@ import org.koin.compose.koinInject
 fun HomeScreen(onAddExpense: () -> Unit = {}, onAskAi: () -> Unit = {}) {
     val colors = AppTheme.colors
     val factory: HomeStateFactory = koinInject()
-    val state = remember { factory.build() }
+    val state by factory.observe().collectAsStateWithLifecycle(remember { factory.build() })
 
     Box(Modifier.fillMaxSize()) {
         Column(

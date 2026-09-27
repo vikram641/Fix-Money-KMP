@@ -1,6 +1,10 @@
 package com.fixmoney.shared.di
 
 import com.fixmoney.shared.data.CategoryRepository
+import com.fixmoney.shared.db.DatabaseBuilderFactory
+import com.fixmoney.shared.db.FixMoneyDatabase
+import com.fixmoney.shared.db.buildDatabase
+import com.fixmoney.shared.expense.ExpenseRepository
 import com.fixmoney.shared.home.HomeStateFactory
 import com.fixmoney.shared.onboarding.OnboardingPrefs
 import com.fixmoney.shared.platform.httpClient
@@ -26,8 +30,11 @@ val sharedModule = module {
         }
     }
     single { OnboardingPrefs(get()) }
+    single<FixMoneyDatabase> { buildDatabase(get()) }
+    single { get<FixMoneyDatabase>().expenseDao() }
     single { CategoryRepository(get()) }
-    single { HomeStateFactory(get()) }
+    single { ExpenseRepository(get()) }
+    single { HomeStateFactory(get(), get()) }
 }
 
 /** Provides the platform's Settings implementation (SharedPreferences / NSUserDefaults). */

@@ -4,6 +4,12 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.room)
+}
+
+room {
+    schemaDirectory("$projectDir/schemas")
 }
 
 /**
@@ -25,6 +31,8 @@ kotlin {
             api(project.dependencies.platform(libs.koin.bom))
             api(libs.koin.core)
             api(libs.multiplatform.settings)
+            implementation(libs.room.runtime)
+            implementation(libs.sqlite.bundled)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.ktor.client.core)
@@ -38,6 +46,16 @@ kotlin {
             implementation(libs.ktor.client.darwin)
         }
     }
+}
+
+// Room's compiler has to run for every target, not just Android.
+dependencies {
+    listOf(
+        "kspAndroid",
+        "kspIosX64",
+        "kspIosArm64",
+        "kspIosSimulatorArm64"
+    ).forEach { add(it, libs.room.compiler) }
 }
 
 android {

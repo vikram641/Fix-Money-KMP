@@ -34,6 +34,7 @@ import com.fixmoney.shared.data.CategoryRepository
 import com.fixmoney.shared.model.Category
 import com.fixmoney.shared.model.CurrencyConstants
 import com.fixmoney.ui.AppTheme
+import com.fixmoney.ui.categoryIconFor
 import com.fixmoney.ui.components.IconBadge
 import com.fixmoney.ui.components.PrimaryButton
 import com.fixmoney.ui.components.StepHeader
@@ -221,7 +222,7 @@ fun SetupBudgetScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Image(
-                            painter = painterResource(categoryIcon(category.icon)),
+                            painter = painterResource(categoryIconFor(category.icon)),
                             contentDescription = null,
                             modifier = Modifier.size(38.dp)
                         )
@@ -243,21 +244,6 @@ fun SetupBudgetScreen(
         PrimaryButton("Continue", onContinue, enabled = state.monthlyBudget > 0)
         Spacer(Modifier.height(40.dp))
     }
-}
-
-/**
- * Maps a category's stored icon name onto its drawable. The old app resolved
- * this with `resources.getIdentifier(...)`, which has no Compose-resources
- * equivalent - accessors are generated, so the mapping has to be explicit.
- */
-private fun categoryIcon(name: String): DrawableResource = when (name) {
-    "ic_food" -> Res.drawable.ic_food
-    "ic_transport" -> Res.drawable.ic_transport
-    "ic_shopping" -> Res.drawable.ic_shopping
-    "ic_health" -> Res.drawable.ic_health
-    "ic_bills" -> Res.drawable.ic_bills
-    "ic_entertainment" -> Res.drawable.ic_entertainment
-    else -> Res.drawable.ic_other
 }
 
 /** 25000 -> "25,000", 100000 -> "1,00,000" - Indian digit grouping, as the old layout showed. */

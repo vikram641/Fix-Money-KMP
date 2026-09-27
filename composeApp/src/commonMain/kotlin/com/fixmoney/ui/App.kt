@@ -10,6 +10,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.fixmoney.shared.onboarding.OnboardingPrefs
+import com.fixmoney.ui.expense.AddExpenseScreen
 import com.fixmoney.ui.home.DashboardScreen
 import com.fixmoney.ui.onboarding.*
 import org.koin.compose.koinInject
@@ -92,7 +93,12 @@ fun App() {
                         }
                     )
                 }
-                composable(Routes.HOME) { DashboardScreen() }
+                composable(Routes.HOME) {
+                    DashboardScreen(onAddExpense = { navController.navigate(Routes.ADD_EXPENSE) })
+                }
+                composable(Routes.ADD_EXPENSE) {
+                    AddExpenseScreen(onClose = { navController.popBackStack() })
+                }
             }
         }
     }
