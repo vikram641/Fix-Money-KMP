@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,7 +50,7 @@ fun HomeScreen(onAddExpense: () -> Unit = {}, onAskAi: () -> Unit = {}) {
         Column(
             Modifier
                 .fillMaxSize()
-                .safeDrawingPadding()
+                .statusBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
         ) {
@@ -107,8 +108,7 @@ fun HomeScreen(onAddExpense: () -> Unit = {}, onAskAi: () -> Unit = {}) {
         Box(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .safeDrawingPadding()
-                .padding(end = 20.dp, bottom = 28.dp)
+                .padding(end = 20.dp, bottom = 24.dp)
                 .size(62.dp)
                 .clip(RoundedCornerShape(20.dp))
                 .background(colors.accent)

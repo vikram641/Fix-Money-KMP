@@ -169,7 +169,24 @@ There is no expense data source yet (Room), so spend is 0 and the empty state al
 
 Date handling is `expect`/`actual` (`shared/platform/DateTime.kt`) rather than kotlinx-datetime — only the current hour and `yyyy-MM` are needed, and every third-party KMP library so far has had to clear an `iosX64` + Kotlin-version gate for no benefit here.
 
+**Window insets: use the specific one, never `safeDrawingPadding()` on a partial-screen element.** `safeDrawingPadding()` applies *every* inset, so putting it on the bottom nav bar added the **status bar's** height as padding above the icons - a large empty gap on Android. The nav bar takes `navigationBarsPadding()`; the scrolling content above it takes `statusBarsPadding()`. The FAB, sitting inside the content area, needs neither.
+
 **`bottomNavBg` is the wrong token for the nav bar** — it is `#FFFFFF` in `colors.xml` with no `values-night` override, so it stayed white in dark mode. Use `bgCard`. Other tokens without a night variant will have the same trap.
+
+**The Android manifest needs `android:icon` / `android:roundIcon` explicitly** - without them the app shows the default green robot in the launcher even though the mipmaps are present in `androidMain/res`.
+
+## iCloud breaks builds
+
+`~/Desktop` is synced by iCloud Drive, and iCloud periodically duplicates files inside `build/` as `<name> 2.<ext>`. Gradle then fails with D8 `Type ... is defined multiple times` (seen for `ModulesKt 2.class` and `AppKt 2.dex`). It recurs; it is not a one-off.
+
+Workaround when it happens:
+
+```bash
+find . -name "* 2.*" -delete
+rm -rf composeApp/build/intermediates shared/build/intermediates
+```
+
+The real fix is to keep build output out of iCloud - either move the project off the Desktop, or point Gradle's build directory elsewhere. Not decided yet.
 
 ## Testing on Android
 
