@@ -1,25 +1,22 @@
 package com.fixmoney.ui
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.fixmoney.shared.onboarding.OnboardingPrefs
+import com.fixmoney.ui.onboarding.SetupNameScreen
+import com.fixmoney.ui.onboarding.WelcomeScreen
+import org.koin.compose.koinInject
 
 /**
  * Root composable, shared by both platforms. Android's MainActivity and iOS's
  * MainViewController both do nothing but host this.
- *
- * Placeholder for now - the real screens get built here one at a time, using
- * the old XML/Fragment app (~/Downloads/Expense) as the reference for what
- * each screen should look like and do.
  */
 @Composable
 fun App() {
@@ -28,27 +25,31 @@ fun App() {
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background
         ) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = "FixMoney",
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = "Kotlin Multiplatform + Compose",
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-                Text(
-                    text = "Running on ${platformName()}",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 24.dp)
-                )
+            val prefs: OnboardingPrefs = koinInject()
+            val navController = rememberNavController()
+
+            // Same gate the old app's SplashViewModel applied: an already-onboarded
+            // install skips straight past onboarding.
+            val start = remember { if (prefs.isOnboardingComplete()) Routes.HOME else Routes.WELCOME }
+
+            NavHost(navController = navController, startDestination = start) {
+                composable(Routes.WELCOME) {
+                    WelcomeScreen(onGetStarted = { navController.navigate(Routes.SETUP_NAME) })
+                }
+                composable(Routes.SETUP_NAME) {
+                    SetupNameScreen(
+                        onBack = { navController.popBackStack() },
+                        onContinue = { name ->
+                            // Budget and currency screens come next; for now this
+                            // completes onboarding so persistence can be verified.
+                            prefs.saveProfile(name, monthlyBudget = 0, currencyCode = "INR")
+                            navController.navigate(Routes.HOME) {
+                                popUpTo(Routes.WELCOME) { inclusive = true }
+                            }
+                        }
+                    )
+                }
+                composable(Routes.HOME) { HomePlaceholderScreen() }
             }
         }
     }

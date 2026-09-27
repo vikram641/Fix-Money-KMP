@@ -35,9 +35,15 @@ kotlin {
             implementation(compose.components.resources)
             implementation(libs.androidx.lifecycle.viewmodel.compose)
             implementation(libs.androidx.lifecycle.runtime.compose)
+            implementation(project.dependencies.platform(libs.koin.bom))
+            implementation(libs.koin.compose)
+            implementation(libs.koin.compose.viewmodel)
+            implementation(libs.navigation.compose)
         }
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
+            implementation(project.dependencies.platform(libs.koin.bom))
+            implementation(libs.koin.android)
         }
     }
 }

@@ -22,6 +22,9 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            api(project.dependencies.platform(libs.koin.bom))
+            api(libs.koin.core)
+            api(libs.multiplatform.settings)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.ktor.client.core)
