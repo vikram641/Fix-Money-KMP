@@ -3,15 +3,16 @@ package com.fixmoney.ui.home
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -53,31 +54,32 @@ fun DashboardScreen() {
                 // Not `bottomNavBg`: that token is #FFFFFF in colors.xml with no
                 // values-night override, so it stayed white in dark mode.
                 .background(colors.bgCard)
-                .safeDrawingPadding()
-                .padding(vertical = 10.dp),
+                // Only the navigation-bar inset. `safeDrawingPadding()` applies
+                // every inset including the status bar's, which showed up as a
+                // large empty gap above these icons.
+                .navigationBarsPadding()
+                .padding(vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Icons only, no labels - the old bottom bar marked the active tab
+            // with a rounded pill behind the icon instead.
             DashboardTab.entries.forEach { item ->
                 val selected = item == tab
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                Box(
+                    contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(18.dp))
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(
+                            if (selected) colors.accent.copy(alpha = 0.22f) else Color.Transparent
+                        )
                         .clickable { tab = item }
-                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                        .padding(horizontal = 18.dp, vertical = 8.dp)
                 ) {
                     Image(
                         painter = painterResource(item.icon),
                         contentDescription = item.label,
-                        modifier = Modifier.size(if (selected) 30.dp else 26.dp)
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        item.label,
-                        fontSize = 11.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                        color = if (selected) colors.accent else colors.textSecondary
+                        modifier = Modifier.size(28.dp)
                     )
                 }
             }
@@ -89,7 +91,7 @@ fun DashboardScreen() {
 private fun ComingSoon(label: String) {
     val colors = AppTheme.colors
     Column(
-        Modifier.fillMaxSize().safeDrawingPadding().padding(28.dp),
+        Modifier.fillMaxSize().statusBarsPadding().padding(28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {

@@ -159,6 +159,10 @@ Categories confirmed arriving from Firestore on iOS, not the fallback — the si
 
 `expect`/`actual` is proven working via `shared/.../platform/Platform.kt` (`httpClient()` → OkHttp/Darwin, `logWarn()` → `android.util.Log`/`NSLog`). Same mechanism camera, OCR, ads and background sync will need.
 
+## iOS must run full-bleed
+
+`iosApp/iosApp/ContentView.swift` uses `.ignoresSafeArea(.all)`. With the template's `.ignoresSafeArea(.keyboard)` instead, SwiftUI insets the Compose view by the safe area and the app renders with black bands behind the status bar and home indicator. Compose applies its own insets, so it has to own the whole window.
+
 ## Feature 2 — Home (in progress)
 
 `ui/home/DashboardScreen.kt` is the five-tab shell from the old `bottom_nav_menu.xml`; only the Home tab is built, the other four say "Not migrated yet".
@@ -171,22 +175,17 @@ Date handling is `expect`/`actual` (`shared/platform/DateTime.kt`) rather than k
 
 **Window insets: use the specific one, never `safeDrawingPadding()` on a partial-screen element.** `safeDrawingPadding()` applies *every* inset, so putting it on the bottom nav bar added the **status bar's** height as padding above the icons - a large empty gap on Android. The nav bar takes `navigationBarsPadding()`; the scrolling content above it takes `statusBarsPadding()`. The FAB, sitting inside the content area, needs neither.
 
-**`bottomNavBg` is the wrong token for the nav bar** — it is `#FFFFFF` in `colors.xml` with no `values-night` override, so it stayed white in dark mode. Use `bgCard`. Other tokens without a night variant will have the same trap.
+The bottom bar is **icons only, no labels**, with a rounded pill behind the active one - matching the old app. **`bottomNavBg` is the wrong token for it** — it is `#FFFFFF` in `colors.xml` with no `values-night` override, so it stayed white in dark mode. Use `bgCard`. Other tokens without a night variant will have the same trap.
 
 **The Android manifest needs `android:icon` / `android:roundIcon` explicitly** - without them the app shows the default green robot in the launcher even though the mipmaps are present in `androidMain/res`.
 
-## iCloud breaks builds
+## Location — do not move this back to the Desktop
 
-`~/Desktop` is synced by iCloud Drive, and iCloud periodically duplicates files inside `build/` as `<name> 2.<ext>`. Gradle then fails with D8 `Type ... is defined multiple times` (seen for `ModulesKt 2.class` and `AppKt 2.dex`). It recurs; it is not a one-off.
+The project lives at **`~/Developer/Fix-Money-KMP`**. It started on `~/Desktop`, which is synced by iCloud Drive, and that broke builds repeatedly: iCloud duplicates files inside `build/` as `<name> 2.<ext>`, and Gradle then fails with D8 `Type ... is defined multiple times` (hit for `ModulesKt 2.class` and `AppKt 2.dex`).
 
-Workaround when it happens:
+Moving it out was not straightforward - a plain `mv` of the 1.1 GB tree hung for over ten minutes with zero bytes written, blocked by iCloud's file provider. What worked: delete the `build/` directories first (1.1 GB to 8 MB), then `rsync -a --remove-source-files`.
 
-```bash
-find . -name "* 2.*" -delete
-rm -rf composeApp/build/intermediates shared/build/intermediates
-```
-
-The real fix is to keep build output out of iCloud - either move the project off the Desktop, or point Gradle's build directory elsewhere. Not decided yet.
+Only `~/Desktop` and `~/Documents` are synced, so `~/Developer` is safe.
 
 ## Testing on Android
 

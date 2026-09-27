@@ -16,6 +16,10 @@ struct ComposeView: UIViewControllerRepresentable {
 struct ContentView: View {
     var body: some View {
         ComposeView()
-            .ignoresSafeArea(.keyboard)
+            // Full bleed: without this SwiftUI insets the Compose view by the
+            // safe area, leaving black bands behind the status bar and home
+            // indicator. Compose applies its own insets (statusBarsPadding /
+            // navigationBarsPadding), so it must own the whole window.
+            .ignoresSafeArea(.all)
     }
 }
