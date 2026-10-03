@@ -21,7 +21,14 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- `microphone`, not `specialUse`. Two reasons, and the first is a bug:
+         from Android 14 a foreground service may only reach the mic if it
+         declares the microphone type, so the bubble's whole purpose would fail
+         on 14+ with only `specialUse` - invisible on the Android 12 test
+         device. The second is that `specialUse` is Play's catch-all: it gets a
+         manual review and a demo video, and a reviewer looking at a service
+         that records audio would send us to this type anyway. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <!-- Android 13+: without it the foreground service still runs, but its
          ongoing notification is silently dropped. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -73,10 +80,6 @@
         <service
             android:name="com.fixmoney.voice.FloatingBubbleService"
             android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Floating voice button to add an expense by speaking" />
-        </service>
+            android:foregroundServiceType="microphone" />
     </application>
 </manifest>

@@ -136,7 +136,7 @@ class FloatingBubbleService : Service(), KoinComponent {
             startForeground(
                 NOTIFICATION_ID,
                 buildNotification(),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             )
         } else {
             startForeground(NOTIFICATION_ID, buildNotification())

@@ -96,8 +96,11 @@ android {
         applicationId = "com.vikram641.expensetracker"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        // Play has versionCode 10 (1.4.1) live, so any upload must be >= 11.
-        versionCode = 11
+        // Play has versionCode 10 (1.4.1) live. 11 was uploaded to a draft
+        // release and then superseded when the foreground service moved from
+        // `specialUse` to `microphone`; Play will not take a version code twice,
+        // even from a discarded draft.
+        versionCode = 12
         versionName = "2.0"
     }
 
