@@ -159,6 +159,37 @@ Categories confirmed arriving from Firestore on iOS, not the fallback — the si
 
 `expect`/`actual` is proven working via `shared/.../platform/Platform.kt` (`httpClient()` → OkHttp/Darwin, `logWarn()` → `android.util.Log`/`NSLog`). Same mechanism camera, OCR, ads and background sync will need.
 
+## System bars follow the in-app switch, not the system (Android)
+
+`MainActivity` calls `enableEdgeToEdge()` with no arguments for the first frame,
+and `SystemBarsAppearance(darkTheme)` (expect/actual, `ui/SystemBars.kt`) calls it
+again from the composition whenever the theme flips.
+
+The bare call was the bug. Its default `SystemBarStyle.auto` decides light-vs-dark
+icons from the **system's** `uiMode`, and the two disagree constantly: Settings'
+Dark Theme switch can put the app in dark mode on a phone that is in light mode.
+When that happened the status bar drew **dark icons on the dark navy background**
+- the clock and battery were invisible - and the navigation bar got a **white
+contrast scrim** under the dark bottom nav.
+
+`SystemBarStyle.auto(lightScrim, darkScrim, detectDarkMode)` takes the dark-mode
+test as its third argument, so passing `{ darkTheme }` drives it from the app's own
+flag. Re-calling `enableEdgeToEdge` is deliberate rather than poking
+`WindowInsetsController.isAppearanceLight*Bars` directly: only the former also
+clears `isNavigationBarContrastEnforced`, which is what painted that bar white.
+
+Both scrims are `TRANSPARENT` because the app already draws behind both bars - the
+bottom nav's `bgCard` background sits *before* `navigationBarsPadding()` in its
+modifier chain, so it extends under the navigation bar, and each screen's
+background runs up behind the status bar.
+
+The iOS `actual` is an empty no-op: Compose Multiplatform drives the status bar
+style from the composition's own colours there, and there is no navigation bar.
+
+**Verified on the device 2026-10-02** in both directions - dark theme gives white
+status-bar icons and a dark navigation bar, light theme gives dark icons and a
+light one.
+
 ## iOS must run full-bleed
 
 `iosApp/iosApp/ContentView.swift` uses `.ignoresSafeArea(.all)`. With the template's `.ignoresSafeArea(.keyboard)` instead, SwiftUI insets the Compose view by the safe area and the app renders with black bands behind the status bar and home indicator. Compose applies its own insets, so it has to own the whole window.
@@ -175,7 +206,7 @@ Date handling is `expect`/`actual` (`shared/platform/DateTime.kt`) rather than k
 
 **Window insets: use the specific one, never `safeDrawingPadding()` on a partial-screen element.** `safeDrawingPadding()` applies *every* inset, so putting it on the bottom nav bar added the **status bar's** height as padding above the icons - a large empty gap on Android. The nav bar takes `navigationBarsPadding()`; the scrolling content above it takes `statusBarsPadding()`. The FAB, sitting inside the content area, needs neither.
 
-The bottom bar is **icons only, no labels**, with a rounded pill behind the active one - matching the old app. **`bottomNavBg` is the wrong token for it** — it is `#FFFFFF` in `colors.xml` with no `values-night` override, so it stayed white in dark mode. Use `bgCard`. Other tokens without a night variant will have the same trap.
+The bottom bar has a rounded pill behind the active tab, matching the old app. **`bottomNavBg` is the wrong token for it** — it is `#FFFFFF` in `colors.xml` with no `values-night` override, so it stayed white in dark mode. It takes `bgPrimary` in dark mode and `bgCard` in light; see "UI fixes pass" below. Other tokens without a night variant will have the same trap.
 
 **The Android manifest needs `android:icon` / `android:roundIcon` explicitly** - without them the app shows the default green robot in the launcher even though the mipmaps are present in `androidMain/res`.
 
@@ -195,6 +226,32 @@ While it was briefly alive, real taps confirmed: forward navigation works, and *
 
 Until this is sorted, Android verification means installing the APK on the real device.
 
+### Verified on a real Android device 2026-10-02
+
+**OnePlus Nord (AC2001), Android 12, `adb` over USB.** The debug APK
+(`com.vikram641.expensetracker.kmp`, 26 MB) installed and ran. Home, Expenses,
+Analytics, Budget and Settings were each opened and screenshotted; data came from
+Room (an existing install's rows, ₹10 in October, ₹2400 on 28 Sep), the donut,
+the six-month bar chart and the budget roll-up all rendered, and the bottom nav
+switched tabs. **No crash and no exception in logcat** — the only app-tagged
+warnings are SLF4J's "no providers" notice (Ktor's logger, harmless) and an OEM
+`FeatureFlagsImplExport` `NoClassDefFoundError` from the platform, not from us.
+
+So both platforms have now been seen running. Notes from that session:
+
+- **The device must be awake before anything is screenshotted.** A locked/dozing
+  phone screencaps as a pure black PNG with the app still `mFocusedApp` — which
+  reads exactly like the vector-drawable black-screen bug. Check
+  `dumpsys power | grep mWakefulness` before believing a black screenshot, and
+  `input keyevent KEYCODE_WAKEUP` first.
+- **The floating voice bubble overlaps content at its default position.** It parks
+  on the left edge vertically centred in the upper third, where it covers the start
+  of the Home budget card's "TOTAL SPENT THIS MONTH" label and the Budget screen's
+  "Overall Budget". It is draggable, so this is a default-position choice, not a
+  layout bug — but the old app's bubble did not land on top of a label either.
+- `This Week ₹0` on Home is visible on the device too, as expected — still the
+  `platform/DateTime.kt` gap below.
+
 ## Feature 3 — Add Expense + Room (2026-09-27)
 
 **Room is in**, shared across both platforms. Two things had to line up, as always:
@@ -210,7 +267,7 @@ The database file is the only platform-specific part (`DatabaseBuilderFactory`, 
 
 `ui/components/MonthYearDialog.kt` is one composable serving both of the old app's pickers - `MonthYearPickerDialog` on Home (`showDays = false`) and `SelectDateDialog` on Add Expense (`showDays = true`). Home's month is selectable, and switching it re-queries Room for that month.
 
-**`BasicTextField` fills the available width by default**, which left-aligned the whole amount row instead of centring it. `Modifier.width(IntrinsicSize.Min)` makes it wrap its text so the parent can centre. The same pattern is used for the budget amount in onboarding.
+**`BasicTextField` fills the available width by default**, which left-aligned the whole amount row instead of centring it. Onboarding's budget field still uses `Modifier.width(IntrinsicSize.Min)` for that; **Add Expense's does not any more** - `IntrinsicSize.Min` clipped long amounts, so it measures instead. See "UI fixes pass" below.
 
 `AddExpenseScreen` ports `fragment_add_expense.xml`. Amount is whole numbers only, matching the old `amount.toInt()` validation. **Scan Receipt and Attach Photo are inert** - both need camera/photo access, the biggest expect/actual chunk left in the plan.
 
@@ -226,10 +283,343 @@ All four bottom-nav tabs and the AI chat are now real screens, ported from their
 
 - **Expenses** (`ui/expense/ExpensesScreen.kt`) - category filter chips built from whatever categories the data actually contains, search over note and category, rows grouped by date with a per-day total.
 - **Budget** (`ui/budget/BudgetScreen.kt`) - month stepper, overall roll-up, per-category progress with delete. A `budgets` table was added to Room (same columns as the old `BudgetEntity`). **`spentAmount` is computed from the expenses table rather than stored**, unlike the old schema: keeping a stored copy in sync needs a write on every expense change and can drift. "+ Set Budget" splits the profile figure across categories, as onboarding's budget step did; the old per-category editor screen is not migrated.
-- **Settings** (`ui/settings/SettingsScreen.kt`) - profile row and the toggles. `AppPrefs` keeps them in the old app's separate `"settings"` store. Dark Theme takes effect immediately (the preference is lifted into state in `App.kt`). **Export Data and SIP Calculator are shown but inert** - separate screens, not migrated. **Floating Voice Quick-Add only records the preference**: it needs an Android overlay service, which has no iOS equivalent at all.
+- **Settings** (`ui/settings/SettingsScreen.kt`) - profile row and the toggles. `AppPrefs` keeps them in the old app's separate `"settings"` store. Dark Theme takes effect immediately (the preference is lifted into state in `App.kt`). **Export Data and SIP Calculator are shown but inert** - separate screens, not migrated. **Floating Voice Quick-Add is wired on Android** and hidden on iOS - see "Feature 5" below.
 - **Fixoo chat** (`ui/chat/ChatScreen.kt`) - the shared `GroqChatAssistant` ported on day one finally has a UI. `ChatEngine` builds the DATA summary from Room that the old `ChatViewModel` assembled. **Only the Groq tier is migrated**: the old app tried Gemini first through the Firebase AI SDK, which is Android-only. Plan section 6.2 has the REST route when it is wanted.
-- **Analytics** (`ui/analytics/AnalyticsScreen.kt`) - six months of spend as bars plus the month's categories ranked, both drawn as plain Boxes for the same reason as Home's donut.
+- **Analytics** (`ui/analytics/AnalyticsScreen.kt`) - six months of spend as bars plus the month's categories ranked, both drawn as plain Boxes for the same reason as Home's donut. **The month label is the picker**, as `tvMonth` was in `AnalyticsFragment`: it opens the shared `MonthYearDialog` and everything below re-reads for the month chosen. The bar chart is the six months *ending* at that month, so picking an older one scrolls the whole window back rather than only re-filtering the categories. The old label gave no hint it was tappable, so a small chevron was added - the one deliberate difference.
 - **Set Budget dialog**, **Export Data dialog** and the **SIP Calculator** screen are ported too. Export itself is **not** wired: writing a CSV and handing it to a share sheet is platform work (SAF on Android, `UIActivityViewController` on iOS) with no shared implementation.
+
+## Feature 5 - Voice quick-add (2026-09-28)
+
+The old app's floating voice bubble, ported. Tap a draggable bubble that sits over
+every other app, say "150 on coffee", and the expense is in Room before you've put
+the phone down - no screen in between.
+
+The feature is split so the Android-only part is as small as possible:
+
+| Piece | Where | Platform |
+|---|---|---|
+| Groq parse of one spoken sentence | `shared/ai/VoiceExpenseParser.kt` | both |
+| parse -> match category -> save | `shared/voice/VoiceQuickAddEngine.kt` | both |
+| overlay bubble + `SpeechRecognizer` | `composeApp/androidMain/voice/FloatingBubbleService.kt` | Android |
+| the Settings toggle's permission flow | `ui/settings/VoiceQuickAdd.android.kt` | Android |
+
+**iOS gets no bubble and never will** - an iOS app cannot draw over another app,
+and there is no entitlement that changes that. `VoiceQuickAddHandle.supported` is
+false there and the Settings row is **hidden rather than shown inert**, which is a
+different call from Export Data and SIP (shown, not wired) because those will
+eventually work on iOS and this will not. iOS reaches the same place through Siri
+instead - see "Feature 5b" below.
+
+**Only the Groq tier is migrated**, same as the chat assistant: the old app tried
+`GeminiVoiceExpenseParser` first, through the Android-only Firebase AI SDK. The
+prompt, model and JSON contract are carried over verbatim from
+`GroqVoiceExpenseParser`.
+
+### Differences from the old service, and why
+
+- **The bubble is built in code**, not inflated from `overlay_voice_bubble.xml` -
+  composeApp has no Android layout resources. Same reason its listening state is a
+  `ValueAnimator` pulse rather than Lottie: Compottie is a *Compose* renderer and
+  cannot draw into a plain `ImageView`.
+- **The bubble's two colours are hardcoded ints** in the service (`COLOR_IDLE`,
+  `COLOR_LISTENING` = `accent` / `expense_red`). It lives in a window the Compose
+  theme never reaches, so `AppTheme.colors` is unavailable - change them alongside
+  `Theme.kt`.
+- **`ic_mic.xml` is duplicated** into `androidMain/res/drawable/`. compose-resources
+  drawables are generated accessors and unreachable from View code - the same trap
+  `ic_launcher_background` hit.
+- **Hilt -> Koin**: the service is a `KoinComponent` with `by inject()`. A Service
+  is not a Compose scope, so `koinInject()` does not apply there.
+- **An unmatched category now falls back to the real "Other" row.** The old app
+  saved an empty `categoryId`, which silently kept those expenses out of the donut,
+  Analytics and Budget roll-ups.
+- **The currency comes from the saved profile**, not a hardcoded `"INR"`.
+- **`isBusy` guards the parse/save window.** The old service only guarded
+  `isListening`, so a second tap while the Groq round trip was still running
+  started a fresh recognition on top of it.
+- **Returning from the overlay-permission screen continues the flow.** The old app
+  made you come back and flip the switch a second time. The intent is launched for
+  a result here, so granting it goes straight on to the microphone prompt. The
+  result code is useless (always `RESULT_CANCELED`), so the permission is re-read.
+- **The toggle reflects permissions actually held, not just the stored preference.**
+  Revoking "Display over other apps" used to leave the switch showing ON with no
+  bubble anywhere; `refresh()` now clears the preference in that case.
+
+`FixMoneyApp.onCreate()` restarts the service when the preference says on and both
+permissions are still granted - the toggle's listener is the only other thing that
+ever starts it, so without this a force-stop or an OS kill left it gone for good.
+The old `ExpenseApp` did the same thing for the same reason.
+
+Manifest additions: `RECORD_AUDIO`, `SYSTEM_ALERT_WINDOW`, `FOREGROUND_SERVICE`,
+`FOREGROUND_SERVICE_SPECIAL_USE`, `POST_NOTIFICATIONS`, the `<queries>` entry that
+makes the on-device recognizer visible under Android 11+ package visibility, and
+the `specialUse` service declaration. `androidx.core:core-ktx` was added to
+`androidMain` for `NotificationCompat` rather than left to arrive transitively.
+
+**Verified on iOS 2026-09-28**: the app builds, launches and renders Settings on
+the iPhone SE simulator with the voice row correctly absent and no crash - which is
+what the `expect`/`actual` could have broken there.
+
+**The Android half has never been run.** Both targets compile and the debug APK
+carries the right permissions and the `specialUse` service (checked with `aapt2
+dump`), but the bubble has never been tapped: no Android device has been connected
+to this project yet (see "Testing on Android"). The Groq call reuses a parser shape
+already verified live for the chat assistant, but this prompt's response has not
+been seen.
+
+**To see a screen you cannot tap to**, temporarily change `DashboardScreen`'s
+initial `tab` and rebuild - tapping the simulator is impossible (see "Driving the
+simulator"), and `osascript` is still refused assistive access as of 2026-09-28.
+Reverting needs a third build, so batch whatever you want to look at into one pass.
+
+### Known preference-store mismatch (pre-existing, not introduced here)
+
+`AppPrefs` resolves the *same* `Settings` instance as `OnboardingPrefs`, i.e. the
+`prefs_onboarding` file - despite its own comment claiming the old app's separate
+`"settings"` store. The old app kept `dark_mode` in `settings` and the voice flag
+in `app_prefs` under `voice_bubble_enabled`. So on an update, an existing install's
+theme, alerts and voice-bubble states all read as unset and fall back to defaults.
+Only the onboarding profile carries over. Fixing it means binding named `Settings`
+instances in `platformModule` and pointing `AppPrefs` at them.
+
+### Bubble behaviour, revised 2026-10-02
+
+Three changes, all in `FloatingBubbleService`, after seeing the bubble on a real
+device sitting on top of the Home card's heading:
+
+- **It goes dormant.** Four seconds untouched and it fades to 40% and animates
+  45% of its width past whichever edge it is resting on. A tap brings it back,
+  and **that tap only wakes it** - it does not also open the microphone, or any
+  accidental brush would start a recording. Dormancy is suspended while
+  listening or saving: a half-hidden bubble mid-recording reads as a crash.
+- **Vertical position is clamped, inside the system bars.** The window carries
+  `FLAG_LAYOUT_NO_LIMITS` so it *can* tuck horizontally past the edge - but that
+  same flag let a drag throw it off the top or bottom of the screen, where it
+  could not be retrieved at all. `clampY` keeps it between 12dp margins **and
+  subtracts the status / navigation bar insets**: `screenHeightPx` reports the
+  whole display (`maximumWindowMetrics` includes the bars by design), so
+  clamping against it alone still let the bubble settle under the navigation
+  bar, half hidden with the nav buttons swallowing its touches. The insets are
+  read with `getInsetsIgnoringVisibility` - a temporarily hidden bar must not
+  widen the range, or the bubble is stranded when it returns. The initial
+  position is a third of the way down rather than a bare `y = 300`, which on a
+  tall screen parked it over whatever card was at the top.
+- **Long press shows "Hide bubble".** 450ms, then a chip appears beside it,
+  auto-hiding after 3s; tapping the chip stops the service **and clears the
+  stored preference**, so Settings doesn't go on claiming the bubble is on with
+  nothing on screen - the same trap `AndroidVoiceQuickAdd.refresh()` exists to
+  close. Moving past the tap slop cancels the pending long press, so dragging
+  never pops the chip up mid-gesture.
+
+The chip is a **second overlay window**, not a badge inside the bubble's own:
+the bubble window is sized exactly to the circle, so anything drawn beside it
+would be clipped. It is positioned on the inward side so it can't land off the
+edge, and it must be added to the window manager *before* anything calls
+`updateViewLayout` on it.
+
+## Feature 5b - Siri App Intent, the iOS answer to the bubble (2026-09-28)
+
+What the bubble is *for* - speak from anywhere, expense filed, app never opened - is
+achievable on iOS; only the floating window isn't. `AddExpenseIntent`
+(`iosApp/iosApp/AddExpenseIntent.swift`) does it through Siri: *"Hey Siri, add an
+expense to FixMoney"* -> Siri asks "What did you spend?" -> the answer is parsed and
+saved, and Siri speaks the result back.
+
+- **Siri does the speech-to-text.** The intent declares a `String` parameter and
+  receives a finished sentence, so there is no `SFSpeechRecognizer`, no
+  `AVAudioEngine` and **no microphone permission** on iOS - unlike the Android
+  service, which runs its own recognition.
+- **`openAppWhenRun = false`** is the point: the intent runs in the app's process
+  with no UI. That is why `VoiceQuickAddBridge` calls `ensureKoinStarted()` itself
+  (`IosKoin.kt`) instead of relying on `MainViewController()` having run - a Siri
+  invocation can be the first thing that ever touches Koin in that launch.
+- **The bridge is callback-based, not `suspend`.** An exported suspend function is
+  awkward to call from a `perform()` that is already `async`, and the callback keeps
+  the threading explicit; Swift wraps it in `withCheckedContinuation`. It dispatches
+  to `Dispatchers.Main` so `ensureKoinStarted()` only ever runs on one thread.
+- **The bridge must live in `composeApp`, not `shared`.** composeApp depends on
+  shared with `implementation`, so shared's declarations are not exported into the
+  `ComposeApp` framework header - only composeApp's own are visible to Swift.
+- **Deployment target went 15.0 -> 16.4.** App Intents need 16.0, and the
+  `AppShortcut(intent:phrases:shortTitle:systemImageName:)` initialiser needs 16.4.
+  Costs nothing today: the iOS build has never shipped, so it has no users to drop.
+- Every App Shortcut phrase **must** contain `\(.applicationName)` - Siri rejects a
+  phrase that doesn't name the app, so plain "add an expense" will not work.
+- `iosApp.xcodeproj` was hand-patched to add the Swift file (a `PBXBuildFile`, a
+  `PBXFileReference`, a group entry and a `Sources` entry). `plutil -lint` on the
+  pbxproj afterwards catches a mangled edit before xcodebuild does.
+
+### Verified end to end on iOS 2026-09-28
+
+Not just compiled. A temporary probe called `VoiceQuickAddBridge.addFromSpeech("spent
+150 on coffee")` on launch, and the row landed in Room as `150 / INR / Coffee /
+Food`, with `categoryId` matched to the **real Firestore category**
+(`69dab76ce89baeef7e6c86e5`), not a fallback. Home then showed ₹272 and a Food donut.
+The probe and the test row were removed afterwards. So Groq parsing, category
+matching, Room writes and the Koin-from-no-UI path are all proven on iOS; **Siri's
+own plumbing is not** - the simulator has no Siri, so the phrase-to-intent hop needs
+a real device.
+
+`Metadata.appintents` is generated into `FixMoney.app` at build time and contains
+`AddExpenseIntent` plus its phrases - that much is checkable without a device:
+
+```bash
+python3 -c "import json;print(json.load(open('build/Debug-iphonesimulator/FixMoney.app/Metadata.appintents/extract.actionsdata')))"
+```
+
+### Kotlin string literals are UTF-16 in the binary
+
+`strings FixMoney | grep Something` finds **nothing** for a Kotlin string, and macOS
+`strings` has no `-el` flag to fix it. This wasted a debugging round confirming
+whether an install was stale. Search the bytes instead:
+
+```python
+open(binary,'rb').read().count("my literal".encode('utf-16-le'))
+```
+
+### `simctl install` can silently leave the old build in place
+
+The same round: the app kept running old code although `xcodebuild` had succeeded,
+because an earlier `install` had not taken. After installing, confirm the bytes are
+what you just built (the UTF-16 search above) before concluding a code path is
+broken. `simctl install` also hands the app a **new data container path**, so any
+saved `.db` path from before the install is stale - re-run `get_app_container`.
+
+## Add Expense layout, revised 2026-10-02
+
+- **The title is centred with a `Box`, not a `Row`.** Close (46dp) and SAVE are
+  different widths, so a `weight(1f)` title between them centres in the *gap*,
+  which sat visibly left of the screen's centre.
+- **The Scan Receipt / Attach Photo row is pinned below the scrolling body**
+  rather than trailing inside it. Everything used to crowd into the top two
+  thirds with the last quarter blank. Same pattern as `SetupBudgetScreen`.
+- **Horizontal padding is per section, not on the scroll column.** With it on
+  the column the category `LazyRow` was clipped mid-label against a hard 18dp
+  margin instead of scrolling off the screen; it now takes `contentPadding` and
+  runs edge to edge.
+- The amount placeholder and field are centre-aligned inside their minimum-width
+  box - start-aligned, the whole group sat a few dp left of centre. **Superseded
+  2026-10-03**: the placeholder is in a `decorationBox` and the width is
+  measured, not intrinsic.
+
+## Feature 6 - Scan Receipt (2026-10-02)
+
+Point the camera at a receipt, and the amount, date, note and category land in
+Add Expense already filled in. Ported from the old app's `feature/scanner/`.
+
+| Piece | Where | Platform |
+|---|---|---|
+| on-device OCR | `shared/receipt/ReceiptOcr.kt` (expect/actual) | both |
+| OCR text -> fields, via Groq | `shared/ai/ReceiptTextParser.kt` | both |
+| photo bytes -> `ExtractedReceipt` | `shared/receipt/ReceiptScanEngine.kt` | both |
+| capture -> review -> scan UI | `ui/scanner/ReceiptScannerScreen.kt` | both |
+| camera + alignment frame + crop | `ui/scanner/ReceiptCapture.android.kt` | Android |
+| system camera picker | `ui/scanner/ReceiptCapture.ios.kt` | iOS |
+
+**The old app's own docs are wrong about this feature - do not trust them.**
+`~/Downloads/Expense/CLAUDE.md` still describes one multimodal Gemini call with
+"no local OCR, no regex heuristics". That architecture was replaced and never
+re-documented: the live path there is ML Kit OCR -> Groq text model, and
+`GeminiReceiptExtractor` is dead code that nothing calls (it only still owns the
+`ExtractedReceipt`/`ReceiptImageStatus` types). The port follows the *code*.
+Also worth knowing: that repo's `GroqReceiptExtractor.kt` is **untracked in
+git**, so a `git clean` over there would delete the engine this port was read
+from.
+
+### Two stages, not one multimodal call
+
+1. **On-device OCR** - ML Kit Text Recognition v2 on Android, the **Vision
+   framework** on iOS. Free, offline, instant; the photo itself never leaves the
+   phone. Only the recognised *text* is sent anywhere.
+2. **Groq's text model** (`openai/gpt-oss-20b`) turns that messy text into
+   fields.
+
+The old app's note on why there is no vision call is still the reason: Groq has
+no vision-capable model on this project's key - `meta-llama/llama-4-scout-*`
+now 404s `model_not_found`. Re-check the models endpoint before assuming
+otherwise.
+
+Vision is the one dependency-free win in this project: it ships with iOS, so
+unlike every other library here it has no `iosX64` or Kotlin-version klib gate
+to clear. ML Kit and CameraX are Android-only, so they have none either.
+
+### The category-index trick is load-bearing
+
+Groq's `json_object` mode cannot constrain a string to the app's real category
+names, so the prompt asks for an **index** into a numbered list instead. Carried
+over verbatim. A free-text category field lets the model paraphrase or invent a
+name that then silently matches nothing; an int can only be bounds-checked.
+
+### Differences from the old app, and why
+
+- **The engine fetches the category list itself** instead of having it passed
+  down. The old `AddExpenseFragment` put a `String[]` in a Bundle *and* enabled
+  the scan button even when categories had failed to load, which produced a
+  prompt with an empty numbered list and silently broke category autofill. A
+  repository call can't get out of sync with itself.
+- **Camera denial keeps the user on the screen** with a tappable explanation.
+  The old fragment showed a toast and navigated away, with no rationale, no
+  permanent-denial handling and no route to App Settings - a second denial just
+  bounced you out with a toast you might miss.
+- **iOS uses the system camera** (`UIImagePickerController`, `allowsEditing =
+  true`) rather than a custom AVFoundation preview with the Android side's
+  alignment frame. That code is writable but **not testable from here at all** -
+  no Apple Developer account for device testing, and the simulator has no
+  camera - and an untested hand-written camera is a worse bet than the system
+  one. The crop step in the editor stands in for the frame. Revisit if a device
+  ever becomes available.
+- **Only the Groq tier is migrated**, as with the chat assistant and voice
+  quick-add. Nothing was lost: the Gemini extractor was already dead code.
+
+### Things that cost time, or would have
+
+- **`UIImagePickerController.delegate` is a weak reference.** Without the
+  `retainedDelegate` strong reference in `ReceiptCapture.ios.kt`, the delegate
+  is collected before the shutter is tapped and no callback ever fires.
+- **`BlendMode.Clear` needs an offscreen layer.** The overlay's cut-out is
+  drawn with `graphicsLayer { compositingStrategy = Offscreen }`; without it the
+  "hole" paints solid black over the preview.
+- **Don't write state from inside a draw scope.** The capture surface's size is
+  taken with `Modifier.onSizeChanged`, not assigned inside `Canvas {}` - setting
+  state while drawing schedules another draw just to read it back.
+- The skia decoder for the review image is `Image.makeFromEncoded(bytes)
+  .toComposeImageBitmap()`, **not** `asComposeImageBitmap` - that one exists but
+  takes a different receiver and the error only says "receiver type mismatch".
+
+### The capture -> review -> scan flow is deliberate
+
+OCR and the Groq call fire only after the user looks at the photo and taps Scan
+Receipt. A shot they would have retaken anyway never costs an API call. Every
+failure (`null`, `BLURRY`, `NOT_A_RECEIPT`, or a result with nothing in it) is
+recoverable in place with the old app's exact wording, and Retake comes back
+rather than dropping the user out of the screen.
+
+### Handing the result back
+
+The old app wrote to the nav back stack's `savedStateHandle` and consumed once.
+The Compose equivalent is a `pendingScan` holder in `App.kt`: the scanner writes
+it, `AddExpenseScreen` applies it and calls `onScanConsumed()`. Same
+write-then-remove contract, so re-entering Add Expense never re-applies a stale
+scan, and the whole hop stays in common code.
+
+`AddExpenseScreen`'s apply effect is keyed on **both** the result and the
+category list, because a scan can land before the categories finish loading -
+the old app needed a `pendingScanResult` field for that case, and re-running the
+effect when the list arrives covers it without the extra state. Ownership is
+only released once there is nothing left to wait for.
+
+### Attach Photo is still inert - and that is faithful
+
+`btnAttachPhoto` existed in the old `fragment_add_expense.xml` with **no click
+listener anywhere**, no picker code, and no attachment field on the expense
+model. There is nothing to port; wiring it would be new work, not a migration.
+
+### Status
+
+Both targets compile (`checkAll`). **Not yet run on a device** - the phone was
+disconnected before the scanner could be exercised, so the camera, the crop, ML
+Kit and the Groq round-trip are all build-verified only on Android, and iOS is
+compile-verified as usual.
 
 ## Sizing across devices
 
@@ -241,13 +631,1067 @@ The bottom bar carries **icons with labels**. An earlier pass removed the labels
 
 **The Groq API key is generated into shared source from `local.properties`** by the `generateSecrets` Gradle task - KMP has no `BuildConfig`, and the key should not be committed. Copy `GROQ_API_KEY` into `local.properties` on any new machine or the chat silently fails.
 
+## UI fixes pass, 2026-10-03
+
+Eight reported bugs, all in `composeApp`. What is worth knowing afterwards:
+
+### Navigation now animates and responds to swipes
+
+- **Transitions are set on the `NavHost`, not per destination** (`ui/App.kt`).
+  Every hop in this app is lateral, so one set of four
+  `slideIntoContainer`/`slideOutOfContainer` specs covers the whole graph;
+  adding them per `composable` would be four lines each and drift apart.
+- **`Modifier.horizontalSwipe` (`ui/components/Swipe.kt`)** is the shared
+  gesture. It is `pointerInput` + `detectHorizontalDragGestures` **on purpose**:
+  that runs in the *Main* pass, which reaches a parent only after its children,
+  so the budget `Slider` and every category `LazyRow` consume their own
+  horizontal drags first and keep working. An anchored `draggable` or an
+  Initial-pass interceptor would have eaten both.
+- **A swipe forward honours the same gate the Continue button does.** Without
+  that, swiping walked straight past an empty name on SetupName and a zero
+  budget on SetupBudget. `AllSetScreen` has a back swipe but deliberately **no**
+  forward swipe: "Start Tracking" commits the profile, and a commit takes a tap.
+- The five bottom-nav tabs are an `AnimatedContent` whose direction is read from
+  `targetState.ordinal > initialState.ordinal`, so a swipe and a tab tap produce
+  the same motion. It **clamps at both ends rather than wrapping** - Settings
+  wrapping round to Home reads as a mis-tap. `SizeTransform(clip = false)` is
+  required: without it the container animates between the two screens' heights
+  and every tab change jolts vertically.
+
+### Splash
+
+`ui/SplashScreen.kt` is the start destination; it reads `isOnboardingComplete()`
+**in its `onDone` callback**, not as a remembered start destination, so finishing
+onboarding in the same session is seen. `LaunchedEffect(Unit)` fires it once, so
+a theme flip mid-animation cannot navigate twice.
+
+### The FixMoney mark needs a white plate, never `accent`
+
+The artwork in `ic_fixmoney_logo.webp` is itself two shades of purple, so the
+Welcome header's `accent` circle swallowed it. Both the splash and that header
+now use a white circle with a `cardStroke` ring - the ring matters because
+`bgSplash` is pure white in light mode and the plate would otherwise vanish.
+
+### `AppColors.isDark`
+
+Added as the last field (defaulted `false`, `true` in `DarkColors`). A few places
+need the *screen* colour rather than a token: the bottom nav bar takes
+`bgPrimary` in dark mode so it sits on the same navy as the content above it -
+`bgCard` is a lighter navy and drew the bar as a visibly paler slab. Reading
+`isSystemInDarkTheme()` there would be wrong, because Settings' own switch can
+put the app in dark mode on a light phone (same trap as the system bars).
+
+### Onboarding's budget reaches the Budget screen
+
+`OnboardingState.complete()` is now **suspend** and writes the per-category
+`BudgetEntity` rows the old `completeOnboarding()` wrote, via
+`BudgetRepository.setSplitBudget`. Home always worked because it reads the raw
+preference; the Budget screen only ever reads budget rows, so it stayed empty.
+The split covers whichever categories were ticked on the budget step, or **all**
+of them when none were - that row is labelled optional, so leaving it untouched
+must not mean "no budget anywhere". `setSplitBudget` now hands the integer-
+division remainder to the first row, or 25,000 over 7 categories rolled up to
+24,997 on Budget while Home still said 25,000.
+
+`OnboardingState`'s constructor takes `BudgetRepository` and `CategoryRepository`
+now, both injected in `App.kt`.
+
+**This one is not verified.** It needs tapping through onboarding, which neither
+the iOS simulator (see "Driving the simulator") nor an absent Android device
+allows.
+
+### Add Expense's amount field
+
+Three separate problems, all in the one `BasicTextField`:
+
+- **`IntrinsicSize.Min` does not mean "as wide as the text".** A text field's
+  minimum intrinsic width is not its content's, so the field stopped growing and
+  a 6th digit scrolled the first one out of sight. It is now measured with
+  `rememberTextMeasurer` against the same `TextStyle` it renders with, +6dp for
+  the caret.
+- **The value is a `TextFieldValue` with an explicit `TextRange`.** With a plain
+  `String`, filtering the input on every keystroke reseated the caret at index 0,
+  so editing mid-number produced reversed digits.
+- The placeholder moved into `decorationBox` (it was a sibling in a `Box`), and
+  the whole card focuses the field - the field is only as wide as its digits, so
+  on an empty form there was a ~40dp target floating in a 300dp card.
+
+### Home's month was not discoverably tappable
+
+It opened a picker but rendered as a plain label showing the raw API form
+(`2026-10`). It is now an accent-tinted chip with a `\u25BE` caret showing
+`prettyMonthLabel(...)` - the same hint Analytics' month label already carried.
+The "Ask AI" Lottie went 52dp -> 40dp with a 6dp top pad, which centres it
+against the 52dp avatar in that Top-aligned row.
+
+### Verified on the iPhone SE simulator 2026-10-03
+
+Screenshotted and compared: the splash's circular mark, Welcome's white logo
+plate, Home's month chip + smaller AI icon, and the bottom bar sitting on the
+same navy as Home in dark mode. **The gesture work and the onboarding budget
+rows are build-verified only** - nothing on this machine can tap or swipe either
+platform.
+
+## Second fixes pass + four ported screens, 2026-10-03
+
+### The system navigation bar had a 40%-black scrim on it
+
+The bottom bar read `#0B1A2B` and the strip below it `#07101A` in dark mode -
+the same colour under Android's navigation-bar contrast scrim.
+**`enableEdgeToEdge` turns `isNavigationBarContrastEnforced` on when the style's
+night mode is dark**, which is exactly what this app asks for, so the fix is to
+clear it *after* that call (it sets it itself) and set `window.navigationBarColor`
+explicitly. `navigationBarColor` is ignored from API 35 on, where the bar is
+always transparent and the app's own background - which already extends under it
+- shows through instead, so the explicit colour is belt and braces for ≤34.
+
+The colour itself is now one token, `AppColors.bottomBar`, read by both the
+bottom bar and `SystemBarsAppearance`. They must not be able to drift.
+
+### Home's budget comes from Room, not the preference
+
+Setting a category budget moved the Budget screen's roll-up and left Home's
+"Remaining" untouched, because Home read `prefs.getMonthlyBudget()` directly.
+`HomeStateFactory.observe` is now a `combine` over the expenses **and** budgets
+tables, and `totalBudget` is the sum of the month's budget rows, falling back to
+the onboarding preference when a month has none.
+
+It observes **all** expense rows and filters the month in memory rather than
+running the month query. Two reasons: the insight engine's baseline is the three
+weeks before last, which in the first days of a month sits entirely in the
+previous one (a month-filtered query silently compared this week against
+nothing), and deriving both from one list means the card and the figures above it
+cannot disagree.
+
+### `platform/DateMath.kt` - date arithmetic without kotlinx-datetime
+
+`DateTime.kt` said to reach for kotlinx-datetime if real arithmetic was ever
+needed. It is now (the week window, the insight baselines, the export range),
+and the answer is still not a dependency: Howard Hinnant's `days_from_civil` /
+`civil_from_days` are ~30 lines of **common** Kotlin, exact, with no `expect`
+/`actual` and no klib to clear the `iosX64` + Kotlin-version gate.
+
+**Verified, not assumed**: the two functions were transliterated to Python -
+writing every division explicitly, because Kotlin's integer division truncates
+toward zero while Python's `//` floors - and checked against `datetime` for every
+day from 1970-01-01 to 2075-12-31. Zero mismatches in both directions, leap days
+and year boundaries included. Redo that if the arithmetic is ever touched.
+
+**`weekSpent` is no longer 0.** It was 0 only because there was no way to express
+"the last 7 days"; it now reads 0 deliberately when Home is showing a month other
+than the current one, where "this week" has no meaning.
+
+### Settings' Dark Theme switch was lying on a first run
+
+It derived its own state as `appPrefs.darkMode() ?: true` while `App.kt` resolves
+`appPrefs.darkMode() ?: isSystemInDarkTheme()`. On a phone in light mode with no
+stored preference, the app was light and the switch read ON - and the first tap
+"turned dark mode off" while visibly turning it on. **The screen now takes the
+applied theme as a parameter** rather than re-deriving it. Any future toggle that
+feeds something outside Settings has to do the same.
+
+Name and currency are also read per-composition instead of `remember`d, so Edit
+Profile's changes show immediately rather than on the next visit to the tab.
+
+### Export Data is wired
+
+Ported from the old `ExpenseCsvExporter`. The **CSV is shared** - row filtering
+and string building are identical on both platforms - and only `ExportFileWriter`
+is `expect`/`actual`:
+
+- **Android** writes into the shared Downloads collection. API 29+ is MediaStore
+  and needs no permission; API 24-28 has no Downloads collection there, so it
+  falls back to a legacy file write and `WRITE_EXTERNAL_STORAGE` is declared with
+  `maxSdkVersion="28"`.
+- **iOS** has no shared Downloads folder, so the file goes to the app's own
+  Documents directory. **`UIFileSharingEnabled` and
+  `LSSupportsOpeningDocumentsInPlace` are not set in `Info.plist` yet**, so the
+  file is written but the user cannot browse to it in the Files app. Add both, or
+  a share sheet (which needs a `UIViewController`, so it belongs in composeApp),
+  before calling the iOS half done.
+- `writeToURL`'s error-out parameter is `ExperimentalForeignApi` in Kotlin/Native
+  2.2. Passing `null` is the documented "no NSError" form, so the `@OptIn` does
+  not actually depend on unstable surface.
+
+### Four screens ported from `~/Downloads/ui`
+
+- **AI Insight card** (`ui/home/InsightCard.kt` + `shared/home/HomeInsight.kt`).
+  Despite the name **nothing here is generated** - it is arithmetic over local
+  rows, as it was in the old app, so it costs no Groq quota and cannot hallucinate
+  a figure. Both thresholds are carried over (a 3-week baseline, a 20% minimum
+  increase), as is returning null outright rather than filling the card with
+  something vacuous. Unlike the old engine it takes the rows rather than a
+  repository, so it cannot disagree with what is already on screen.
+- **Expense Detail** (`ui/expense/ExpenseDetailScreen.kt`), reached by tapping a
+  row on Expenses. **Edit is deliberately not offered**: the old screen's Edit
+  routed to Add Expense with an `expenseId`, and that screen's edit mode is not
+  migrated - it only ever inserts, so the button would have silently created a
+  duplicate. Delete keeps the old confirmation dialog; it is the one
+  unrecoverable action in the app.
+- **Edit Profile** (`ui/settings/EditProfileScreen.kt`). Writes to
+  `OnboardingPrefs`, not a server - there is no backend, so the local profile *is*
+  the profile. **No avatar picker**: the old `AvatarPickerBottomSheet` /
+  `AvatarManager` pair is not migrated, so the avatar stays the initial. "Your
+  Activity" comes from the rows themselves, with "Member since" being the month
+  of the earliest expense.
+- **Chat category bars.** `ChatAnswer.categories` has been carried through the
+  shared module since day one and nothing rendered it - the prompt asks for a
+  breakdown whenever the question calls for one and the numbers were being thrown
+  away. Bars are scaled against the largest value, not the budget, and coloured
+  from the four category tokens cycled: the assistant returns names only, with no
+  id to look a real colour up by.
+
+### A route argument is Android-only
+
+`NavBackStackEntry.arguments` is an Android `Bundle`, and its accessors do not
+exist in common code - `expense_detail/{expenseId}` compiled on Android and
+failed `compileKotlinIosX64` with *Unresolved reference 'getString'*. The
+selected id is held in `App.kt` state instead, the same pattern (and the same
+reason) as `pendingScan`. **Do not add a path argument to a route in this
+project** without checking iOS.
+
+### The chat was unusable with the keyboard open
+
+Two bugs, both found only by typing into it on the device:
+
+- **`imePadding()` is required on an edge-to-edge screen, not optional.**
+  `android:windowSoftInputMode="adjustResize"` is in the manifest, but
+  `enableEdgeToEdge` means the window does **not** resize - so the composer and
+  the suggestion chips sat underneath the keyboard, and the user could neither
+  see what they were typing nor reach Send. Any screen that pins something to
+  the bottom needs it; `ChatScreen` was the one that did.
+- **The keyboard's action key did nothing.** The field had no `ImeAction`, so the
+  IME offered a newline on a conceptually single-line input and pressing it was a
+  no-op. It is `ImeAction.Send` with a matching `KeyboardActions` now.
+
+### Verified on the OnePlus Nord, 2026-10-03
+
+Screenshotted and checked against real data, not assumed:
+
+- **Navigation bar** measures `(11,26,43)` - byte-identical to the bottom bar,
+  where it read `(7,16,26)` before. The seam is gone.
+- **Home** shows `17% to 33000` and `Remaining ₹27,210` against `₹5,790` spent,
+  i.e. the budget **rows** (33,000), not the onboarding preference (25,000).
+  5,790 + 27,210 = 33,000 exactly.
+- **`This Week` reads ₹5,790**, not ₹0.
+- **AI Insight card** renders with a real forecast - "exceed budget by Oct 17 at
+  this pace" - and the two-tone bar.
+- **Expense Detail** opens from an Expenses row and matches the reference
+  screenshot.
+- **Edit Profile** shows 4 Expenses / ₹6,010 Tracked, which is the table summed
+  by hand.
+- **Settings** toggles match the stored preferences exactly (dark on, alerts off,
+  voice on).
+- **Export** wrote `Download/FixMoney Exports/FixMoney-2026-10.csv`, 183 bytes.
+  Its contents were read back off the device: header plus the three October rows
+  summing to 5,790, with the February 2020 row correctly excluded.
+- **Chat bars** render: Shopping 5290, Transport 720 - both correct against the
+  rows, scaled to the largest.
+
+The date arithmetic is checked exhaustively (see above). **iOS is still
+compile-only** for everything in this pass.
+
+### Driving this device: do not chain adb taps
+
+Two separate mishaps in one session, both from issuing taps without
+screenshotting in between. A tap landed in the notification shade and opened
+WhatsApp; later, taps sent before the app had finished launching went to the
+Messages app. Once another app is in the task stack the symptoms get confusing -
+`input` starts failing with *"Injecting to another application requires
+INJECT_EVENTS permission"*, and taps appear to hit the wrong screen of FixMoney
+when they are in fact hitting a different app.
+
+**One tap, one screenshot, confirm, then the next.** To recover, never tap your
+way back: `input keyevent KEYCODE_HOME`, then `am force-stop`, then `am start`.
+
+### Fixoo: auto-scroll and New chat (2026-10-03)
+
+- **The list follows the conversation.** A `rememberLazyListState` plus a
+  `LaunchedEffect(messages.size, thinking)` that animates to the last index.
+  Keyed on `thinking` as well as the size, so the spinner that appears under the
+  question scrolls into view too - without that, asking from a full screen left
+  the user looking at old messages with no sign anything had happened.
+- **"New chat"** in the header clears the thread back to the greeting, which is
+  now built by a `greeting()` factory rather than inlined in the initial state.
+  It is **disabled while a request is in flight**: `send` holds a reference to
+  the same list, so clearing mid-request would drop the reply into a
+  conversation that no longer exists. It is also disabled when the thread is
+  already just the greeting.
+
+**The thread does not survive leaving the screen.** `messages` is `remember`ed
+in the composable, so navigating back to Home and returning already gives a
+fresh chat - "New chat" only matters within one visit. That matches the old
+app, where the fragment was recreated. Persisting it would need the list lifted
+into `App.kt` or a ViewModel.
+
+### The export folder name changed
+
+The old app wrote to `Downloads/Expense Exports/`; this one writes to
+`Downloads/FixMoney Exports/`. Both directories now exist on the test device.
+Deliberate - the app is FixMoney - but it means an updating user's old exports
+stay in the old folder.
+
+## The 2026 redesign — Home first (2026-10-03)
+
+Source of truth: `~/Downloads/stitch_fixmoney_fintech_app_design/`. One folder
+per screen, each with a `screen.png` and a `code.html`. **Read the HTML, not
+just the PNG** — its Tailwind config carries the exact palette, type scale and
+radii, which is how the tokens below were derived rather than eyedropped.
+
+Home is done. The other eight folders are not started.
+
+### Two colour holders on purpose
+
+`AppColors` (`Theme.kt`) is *generated* from the old app's `colors.xml` and is
+still what every un-redesigned screen reads. `DesignColors`
+(`DesignTokens.kt`) is the new palette. Both are provided by `FixMoneyTheme`,
+and a screen opts in by reading `Design.colors` instead of `AppTheme.colors`.
+
+Folding the new surfaces into `AppColors` would have meant rewriting all nine
+screens in one go, or leaving tokens in it that mean different things depending
+on which screen you are looking at. **Delete `AppColors` once every screen has
+moved**, not before.
+
+The design is dark-first — every mockup is dark. `DesignLight` exists so the
+light theme is not broken, but its values are invented, not design-sourced.
+Check them against a light mockup before trusting them.
+
+### Plus Jakarta Sans, cut from the variable font
+
+The design specifies Plus Jakarta Sans. Google Fonts publishes **only the
+variable TTF** for this family — the `static/` directory 404s, and the
+jsDelivr/fontsource copies are `woff2`, which Compose cannot load. The four
+weights in `composeResources/font/` were produced with
+`fontTools.varLib.instancer` from the official variable file:
+
+```python
+from fontTools.ttLib import TTFont
+from fontTools.varLib import instancer
+f = TTFont("PlusJakartaSans[wght].ttf")
+instancer.instantiateVariableFont(f, {"wght": 600}, inplace=True, updateFontNames=True)
+f.save("plus_jakarta_semibold.ttf")
+```
+
+Poppins stays, and stays the Material theme default, so un-redesigned screens
+keep the typeface they were laid out against. `DesignType` is opt-in per screen.
+
+### Icons are generated stroke vectors
+
+`nd_*.xml` in `composeResources/drawable` — 21 Feather/Material-style line icons
+generated by a script rather than hand-written. They are authored **white** so
+`Icon`'s tint controls them completely; a vector with baked colours cannot be
+recoloured, and these appear in a dozen tints. The old full-colour PNG tab icons
+are gone from the nav bar for exactly that reason — they could not show
+selection at all except through the label.
+
+### Layout gotchas worth keeping
+
+- **Two Texts in a Row starve the weighted one.** The donut legend was a
+  `Row { dot; Text(name, weight(1f)); Text(percent) }`. Compose measures
+  *unweighted* children against the full row width first, so the percent took
+  its natural width and the name got what was left — about two characters in
+  half a card on a compact phone (`"Sh…"`). Fixed by making name + percent a
+  single `buildAnnotatedString` with a muted span, measured and ellipsised as
+  one unit. At 12sp "Transit 10%" still did not fit in ~74dp, so the legend is
+  11sp with tracking removed.
+- **Round stroke caps overhang.** `NewDonut` shortens each sweep by 6° and
+  starts it 3° late; drawing the raw sweeps makes neighbouring slices overlap
+  because a round cap extends half a stroke width past each end. A single 100%
+  slice is special-cased to a full circle, or the only arc gets a visible notch.
+- The bottom bar paints its background **before** `navigationBarsPadding()`, so
+  it extends under the system bar instead of leaving a strip of page showing.
+
+## Remote feature flags (2026-10-03)
+
+`shared/config/FeatureFlags.kt` - one Firestore document switches features off
+without a release.
+
+**Firebase Remote Config is the obvious product for this and is not usable
+here**: its SDK is Android/iOS-native with no KMP build, the same wall every
+Firebase library hits in this project. So the flags ride the **Firestore REST
+transport `CategoryRepository` already uses** - no SDK, identical on both
+platforms, no `iosX64` / Kotlin-version gate.
+
+Document `feature_flags/app`, one field per flag, `0`/`false` hides and
+`1`/`true` shows. `FeatureFlag.key` is the field name, so **treat those strings
+as a published contract** - renaming one silently reverts that flag to its
+default.
+
+**Everything fails open.** A missing field, a failed fetch, a first launch and a
+403 all mean *on*. The document is how a feature gets taken **away**, never how
+it gets turned on - otherwise a Firestore outage would blank the app. The last
+successful fetch is persisted, so a cold start offline keeps what was last
+published rather than snapping back to all-on.
+
+**Live as of 2026-10-03**: `feature_flags/app` exists in the `expenseapp-7b500`
+project with all 25 fields as int64 `1`, and the read rule below is published.
+Every `FeatureFlag.key` has a matching field - worth re-checking after adding a
+flag, because a missing field is indistinguishable from the feature being on.
+
+The rule is what makes the fetch work at all - without it Firestore 403s the
+request. It degrades silently, so a missing rule looks like the flags simply
+having no effect:
+
+```
+match /feature_flags/{doc} { allow read: if true; allow write: if false; }
+```
+
+Writes stay denied, so the only way to flip a flag is the console (or a trusted
+server). The document holds nine integers and no user data, which is why a
+public read is fine here - the same reasoning as the `categories` rule above it.
+
+Values are accepted as number, boolean *or* string, because someone editing in
+the console by hand will produce any of the three.
+
+`App.kt` refreshes once per launch and publishes the result through
+`LocalFeatureFlags`, so a fetch landing after launch re-composes rather than
+needing a restart. Screens read it with `isEnabled(FeatureFlag.X)`.
+
+Gated today: voice quick-add, receipt scan, export (Settings row *and* the
+Expenses footer link), SIP, Fixoo (Home's AI button, Ask Fixoo links), AI
+insights (Home bento + Analytics copilot), budget alerts, and the Analytics and
+Budget **tabs**.
+
+**Settings is gated row by row** (2026-10-03). Every row has its own flag, and
+each of the five groups has a `section_*` flag that drops the whole group at
+once - 25 flags in total, all published at `1`.
+
+Making nearly every row conditional broke the old `Section(content = { ... })`
+shape, where callers placed their own `RowDivider()` between rows. A hidden row
+left its divider behind, so a group could open or close on a stray hairline, and
+a group whose rows were all hidden still drew its header over an empty card.
+
+So `Section` now takes `rows: List<SettingsRow>` instead of a content lambda.
+Building the list first is what makes the two fixes possible: the section
+**places the dividers itself**, between surviving rows only, and **returns early
+when the list is empty** so the header goes with it. Each `SettingsRow` carries a
+stable `id` used as a `key()`, so hiding one row cannot hand its remembered
+state to the row that slides up into its place.
+
+Add a row by adding to the list, never by emitting a divider.
+
+Hiding a tab needed two fixes beyond the `if`: the swipe step indexes into the
+*visible* list rather than the enum (with a tab hidden the two stop lining up),
+and a `LaunchedEffect` falls back to Home if the selected tab disappears under
+the user mid-session.
+
+### Splash uses the redesign's surface
+
+`bgSplash` is the old generated token - `#FFFFFF` light, `#070E31` dark - and
+matched neither new surface, so the splash flashed a different colour than the
+screen that replaced it. It reads `Design.colors.surface` now.
+
+### Edit Profile redesigned; the FAB is Home-only (2026-10-03)
+
+**Edit Profile** from `stitch_fixmoney_fintech_app_design (5)` (which also ships
+a `DESIGN.md` - its palette matches `DesignColors` exactly, no surprises).
+Avatar, name, currency, Save, and an activity card counted from the rows.
+
+Dropped, all data this app does not have: the **email address** with a
+"Verified" tick (there is no account and no email anywhere), **"ID: FX-84920"**
+(an invented identifier - the same kind the user had removed from Expense
+Detail), **"256-Bit Hardware Enclave"** and the tick beside the name,
+**"Active Sync"** / **"Cloud ledger synchronized"** (nothing syncs), the
+**camera badge** on the avatar (`AvatarManager` / `AvatarPickerBottomSheet` are
+not migrated, so there is nowhere to put a photo and no picker), and the header
+**overflow menu**.
+
+**The add-expense FAB is now Home-only.** It was removed from Expenses and
+Budget at the user's request; Analytics and Settings never had one. The
+scroll-aware show/hide machinery went with it on those two screens, along with
+the imports it needed - `BudgetScreen` lost its `onAddExpense` parameter
+entirely, since its empty state opens the limit sheet rather than Add Expense.
+**Expenses keeps the inline "Add expense" button in its empty state**: that is
+an empty-state action, not a floating one.
+
+The bottom spacer on those screens dropped from 92dp to 28dp - 92 existed to
+clear the FAB.
+
+### Expense Detail redesigned, and Add Expense gained an edit mode (2026-10-03)
+
+From `design 5/fixmoney_expense_detail_obsidian_settings_reference`.
+
+**Add Expense now edits.** `AddExpenseScreen(editingId = ...)` loads the row,
+prefills, retitles to "Edit Expense" and saves through the new
+`ExpenseRepository.updateExpense`. That method re-inserts on the same primary
+key - the DAO is `OnConflictStrategy.REPLACE`, so there is no separate `@Update`
+to keep in step - and **carries `createdAt` / `localCreatedAt` over from the
+original**: those are when the expense was *recorded*, and editing an amount
+does not change that. Only `updatedAt` moves.
+
+Two things are suppressed in edit mode: the **scan button** (a scan replaces
+every field, which would silently rewrite the row being edited from a photo) and
+the **pending-scan effect** that applies a returning scan result.
+
+This closes a gap the first port left open - the old Expense Detail deliberately
+had no Edit button because `AddExpenseScreen` only ever inserted, and a button
+that duplicated the row would have been worse than none.
+
+`platform/timeLabelOf(millis)` was added so "Created … 9:26 AM" is the row's
+real `localCreatedAt`, not a fabricated time.
+
+**Dropped from the mockup**, all claims about data that does not exist:
+**"LEDGER SYNC"** and the green dot on the icon (nothing syncs), the **blue
+verified tick** beside the note (nothing verifies an expense), **"Payment
+Account — HDFC Bank ●●●● 4092 / Active AA Sync"** (no bank integration, no
+payment-method field, invented account number), and **"ENCLAVE VAULT
+VERIFICATION • SHA-256 Validated • Zero-Knowledge Store"**.
+
+The **REF line is kept because it can be real** - it is derived from the row's
+own primary key (`local-<millis>` becomes `FX-<yyyymmdd>-<last 4>`), not a
+format invented for the screen.
+
+### Four dialogs/screens redesigned (2026-10-03)
+
+From the **"design 4"** drop, which is the only one with working screenshots for
+these: `fixmoney_select_date_picker_obsidian_theme`,
+`fixmoney_export_data_modal_obsidian_theme`,
+`fixmoney_sip_calculator_obsidian_theme`,
+`fixmoney_scan_receipt_viewfinder_obsidian_theme`.
+
+**Date picker** (`components/MonthYearDialog.kt`) - still one composable for
+both uses (`showDays` adds the day grid). Quick "This month" / "Last month"
+chips, a year stepper, month and day grids. A cell that is *today* is ringed
+rather than filled, which is the only way to tell it from the selection once the
+user moves away. The mockup's **"FISCAL '26" badge is not here**: a fiscal year
+is a real concept this app does not model, and a badge asserting one is
+decoration standing in for a feature.
+
+**Export modal** - after a successful write it offers **"Open with…"**, which
+hands the CSV to the system chooser (`ACTION_VIEW` in `createChooser`, not
+`ACTION_SEND`: the ask was for apps that *open* a CSV, which is viewing).
+`FLAG_GRANT_READ_URI_PERMISSION` is load-bearing - without it the chooser
+appears and every app it lists fails with a permission error.
+
+`ExportFileWriter.write` now returns an `ExportLocation(display, handle)` rather
+than a string: the handle is a `content://` URI on Android (MediaStore's own on
+API 29+, a **FileProvider** URI on 24-28, where the export is a plain public file
+and a `file://` URI would throw `FileUriExposedException`). The provider is
+declared in the manifest with `export_paths.xml` scoped to the one Downloads
+folder - a provider exposing more than the file it must is a way to leak private
+storage.
+
+`open()` returns **false on iOS** and the button is simply not offered there:
+handing a file to another app needs a `UIActivityViewController`, which needs a
+`UIViewController`, and `shared` has no view hierarchy to present from. Move it
+into `composeApp` when iOS sharing is built.
+
+**Only CSV is selectable**. Excel and PDF are shown with a
+SOON pill and swallow taps. Unlike the Settings toggles (stored preferences,
+which the user asked to make live), a *format* is a promise about the artefact:
+picking one that does not exist either writes the wrong file or fails at the end
+of the flow. The mockup's "Zero-Knowledge Export", "SHA-256 Validated" and
+"audited" are **not** reproduced - nothing here is any of those.
+
+**SIP calculator** - all of it is the standard SIP future value with monthly
+compounding, so every figure is real. **"Start SIP Plan" is gone**: there is no
+broker, no account and no money movement, and a primary button that looks like
+it places an investment is the worst kind to ship inert. A disclaimer line
+replaces it. The invented branding ("Sovereign Wealth Modeler", "WEALTH MATRIX
+V2.4", "FixMoney Enclave Computation") is dropped; "compounded monthly" stays
+because it is what the formula does and it changes how the number reads.
+
+**Scan receipt viewfinder** - corner brackets on the cut-out, a status strip,
+and a ring-and-disc shutter. **The brackets and shutter live in
+`ReceiptCapture.android.kt`, not the shared screen**, because that is where the
+frame's geometry is known and because the capture surface owns its capture
+control by design (iOS uses the system camera and draws nothing). A first
+attempt put a shutter in the shared screen; it would have been a second,
+non-functional one. Four mockup items are absent: **"AI AUTO-DETECT • 99.4%"**
+(there is no live detection and no confidence score - OCR runs *after* the
+shutter), **"Targeting Merchant, GSTIN & Tax"** (the parser reads amount, date,
+note, category - not a GSTIN), **flash** (the surface exposes no torch control)
+and **gallery** (no photo picker exists).
+
+### Fixoo chat, redesigned (2026-10-03)
+
+Sixth screen, from `fixmoney_fixoo_copilot_chat`. **Neither drop of that mockup
+has a usable `screen.png`** - both are 28-byte `<FIFE Image failed to fetch>`
+placeholders - so it was built from the HTML alone and verified by rendering,
+not by comparison. Check it against a real render before calling the layout
+final.
+
+Carried over: the header with a live **month pulse strip** (`Oct pulse: ₹4,220
+spent • 16% of cap`, real), timestamped bubbles with sender badges, the
+assistant's category bars, an insight card on the opening message, icon'd
+suggestion chips with Shuffle, and the composer.
+
+**The mockup's centrepiece is not here, deliberately.** It is a pair of
+"Scenario" cards - *Reallocate Runway*, *Expand Food Cap* - with invented
+figures ("projected deficit ~₹1,850", "AI Confidence: 99.4%") and buttons that
+move money between envelopes. Three problems at once: the model returns text
+plus category totals and nothing like that structure, the actions do not exist,
+and the numbers would have to be fabricated. **Fabricated financial analysis
+with an Apply button is not shippable at any fidelity.** The card that *is*
+there is `HomeInsightEngine`'s, every figure of which is arithmetic over the
+user's own rows.
+
+Also dropped: the overflow menu and thumb up/down (nothing behind either),
+attach-file, and "Analyzed via HDFC Verified Feed" (no bank feed).
+
+**Two footer/status lines were rewritten because the mockup's are false:**
+
+- It says **"End-to-end encrypted"**. It is not - the question and a summary of
+  local spending go to Groq over HTTPS. The footer says that instead. Do not
+  restore the original wording.
+- The header says **"Online & Synced"**. Nothing syncs; there is no backend. It
+  reads "Reads your local data".
+
+`platform/currentTimeLabel()` was added (expect/actual) for message stamps -
+turning epoch millis into a wall clock needs the zone offset and the locale's
+12/24-hour preference, and both platforms already have a formatter that knows
+them. iOS uses `setLocalizedDateFormatFromTemplate("jmm")` rather than a fixed
+pattern for the same reason.
+
+Chip labels are short (`"Am I saving?"`) while `Suggestion.prompt` holds the
+real question - the full text pushed the second chip off a compact screen.
+
+### Settings, redesigned (2026-10-03)
+
+Fifth screen, from `fixmoney_settings`. **This mockup is almost entirely
+fiction** - of its 17 rows, four map to features that exist (the Android voice
+bubble, base currency, dark theme, export). The rest name an autonomous spend
+guard, insight scheduling, neural categorisation, a fiscal cycle start, budget
+sweeping, a biometric lock, a blur compositor, haptics, a zero-knowledge
+keyphrase and an account logout - none of which this build has.
+
+**The user chose the full layout with live switches** (asked explicitly, two
+options offered). So every switch flips and persists through
+`AppPrefs.preview(PreviewToggle.…)`, and **nothing reads those values back**.
+Wire each one as its feature lands.
+
+Rows in that state carry a small **PREVIEW** pill. That pill is not decoration:
+"Smart Cap Rollover - sweep unspent budget into next month's envelope" with a
+live switch and no pill reads as a promise that money is being moved, which is
+the one class of misunderstanding this app must not create. **Remove a row's
+pill only when its feature actually works.**
+
+**Connected Accounts is an empty state**, also the user's choice. The mockup
+lists HDFC and ICICI accounts with balances; those figures are invented, and
+rendering invented numbers as the user's money is not shippable at any fidelity.
+The section shows "No accounts linked" and a link row marked PREVIEW.
+
+Two more lines that would otherwise assert something false: the profile card
+says "Local profile on this device" where the mockup has an email address (there
+is no account), and the sync strip says "Offline" where the mockup says
+"Synchronized" (there is no backend).
+
+**The PREVIEW pill belongs on the subtitle line, not the title's.** Sharing the
+title's row cost about 90dp and truncated every long name - "Fixoo Autonomous
+Gu…", "Insight Freque…". The title is the row's identity and has to survive;
+the subtitle can ellipsise.
+
+### Budget + Edit Budget Limit, redesigned (2026-10-03)
+
+Fourth screen, from two mockups: `fixmoney_budget_limits` (the board) and
+`fixmoney_set_budget_limit` (the sheet over it).
+
+`shared/expense/BudgetState.kt` derives the overall cap, pace delta, daily burn,
+runway, envelope health bands and the spending guard from the budget rows plus
+the month's expenses. `BudgetProgress` gained `categoryId` (the sheet needs it)
+and **`rawPercent`** - the existing `percent` is clamped to 0..100 for the
+progress bar, which cannot tell "exactly at the cap" from "double it", and the
+status word has to.
+
+**Six pieces of the two mockups are deliberately absent.** Each is a control
+with nothing behind it, and a switch that silently does nothing is worse than no
+switch:
+
+- The **Category Envelopes / Smart Automation / Rollover** tabs - two of three
+  lead nowhere.
+- The **Budget Automation** card ("Rollover Unspent Balances", "Velocity
+  Shield"). Neither rule exists.
+- The guard card's **Dismiss** button: nowhere to persist a dismissal, so it
+  would return on the next recomposition.
+- The sheet's **Cadence Period (Monthly / Weekly)** - budget rows are keyed
+  `yyyy-MM`; there is no weekly cap in the schema.
+- The sheet's **Smart Pace Guard** and **Rollover Excess** switches.
+- **Precision Mode** and the sheet's history/reset buttons - no edit history is
+  kept.
+
+Put them back with the features, not before.
+
+Other decisions worth knowing:
+
+- The sheet is a `Dialog` pinned to the bottom, **not** a `ModalBottomSheet` -
+  that component is Material3 and its Compose Multiplatform support lags, while
+  a full-width dialog gives the same shape with no platform risk.
+- **Removing a limit takes two taps on the same row**, with the label changing
+  to say so and the arm lapsing after 4s. A confirm dialog stacked on a dialog
+  is awkward on both platforms.
+- Editing **locks the category**; adding offers only categories without a cap,
+  so saving can never silently overwrite an envelope the user is not looking at.
+- The guard card appears only once an envelope passes 75%, and the "Match
+  spend" chip only when there is spend to match - a shortcut that is a no-op is
+  just a dead control.
+- `SetBudgetDialog` is gone, superseded by `EditBudgetSheet`. Its file now holds
+  only `DialogButton`, which `ExportDataDialog` and `ExpenseDetailScreen` still
+  use; that moves or goes when those two are redesigned.
+
+### Analytics, redesigned (2026-10-03)
+
+Third screen. Mockup: `stitch_fixmoney_fintech_app_design/fixmoney_analytics/`.
+
+`shared/analytics/AnalyticsStateFactory` computes the whole screen from the
+expense and budget tables - total, daily burn, peak day, projection, weekly
+velocity, per-category allocation with a previous-period comparison, and payee
+concentration. No API call and nothing cached, so it cannot disagree with
+Expenses or Home. Scope is Month / Quarter / Year, each **ending** at the
+anchor month.
+
+**The velocity chart must not scale to the budget.** First version used
+`max(tallestBar, budgetLimit)` as the axis so the limit was always on screen.
+On the device that destroyed the chart: the budget is the *sum of every
+category's limit*, so a ₹5.1L budget against ₹34k of spend squashed every real
+bar to a 2% sliver. It now scales to the bars, and the dashed budget rule is
+drawn **only within 1.25x of the tallest bar** - the range where "am I near it?"
+is the question. Beyond that the caption still states the limit and the bars
+stay readable.
+
+Projected bars are drawn as an **outline, never a solid** - an extrapolation
+must not read as money already spent.
+
+Deliberate differences, all missing data:
+
+- **"Where it went" groups by the note**, and is titled that rather than the
+  mockup's "Merchant Concentration". There is no merchant field in this schema;
+  the note is what the user typed. Rows without one are excluded and the card
+  hides entirely when none have one.
+- The Copilot card's text comes from `HomeInsightEngine`. The mockup's "weekend
+  dining accounted for 64% of your Food outflow" needs a weekday/weekend split
+  per category that the engine does not compute. The card is **absent** when
+  the engine has no signal, rather than padded with filler.
+- Category badges compare against the **previous period**, not a rolling
+  average, and are absent when there is no previous period.
+- **Year is four quarterly bars, not twelve monthly ones** - twelve do not fit
+  across a phone.
+
+### Expenses, redesigned (2026-10-03)
+
+Second screen onto the new design. Mockup:
+`stitch_fixmoney_fintech_app_design/fixmoney_expenses/`.
+
+The **collapsing header is now shared**: `ui/components/DesignScaffold.kt` holds
+`DesignAppBar`, `LineIcon` and `CollapsingScreen`, and both Home and Expenses
+pass a `sticky` section and a `body`. Category colour/glyph/short-label mapping
+moved to `ui/CategoryVisuals.kt` for the same reason. Adding a third screen
+should mean neither is touched.
+
+**The mockups' app bars say the wrong thing.** `fixmoney_expenses` and
+`fixmoney_settings` both title theirs "Home", while analytics says
+"Fixmoney — Analytics" and budget says "Budget & Limits" - template leftovers,
+not a design intent. The bar takes the screen's own name here.
+
+Deliberate differences, all missing data rather than taste:
+
+- Row subtitles are "Shopping • Today", never "Linen shirt & socks • 7:40 PM" -
+  the schema has a date and no clock time.
+- The search field's trailing "tune" button is **inert**. The mockup implies an
+  advanced-filter sheet that does not exist; the category pills are the filter.
+- The footer reads "7 transactions in this period", not "All September
+  transactions reconciled". Nothing in this build reconciles anything, and
+  claiming it did would be a lie about the user's money. The export link under
+  it is real - it opens the working `ExportDataDialog`.
+- **"Custom" means all time**, not a range picker. There is no range state yet;
+  the label is the mockup's, the behaviour is the honest subset.
+- The trend badge is **omitted when the previous month has no rows** rather than
+  shown as 0% or 100%. No baseline, no claim.
+
+### The header collapses: app bar scrolls off, greeting takes its place
+
+`AppBar` + `GreetingRow` are **one pinned stack** laid over the scrolling
+content. Scrolling slides the stack up by exactly the scroll offset until the
+app bar has gone, then stops - the greeting is left sitting where "Home" was and
+the cards pass underneath it. Scrolling back down unwinds identically.
+
+The offset is **derived** from `scroll.value`, not animated towards a target.
+That is what makes the two directions match for free and leaves nothing to get
+out of sync or to catch up when the direction changes mid-fling.
+
+Three things this needs that are easy to get wrong:
+
+- **The content's top spacer reserves the stack's *uncollapsed* height**, and
+  the stack shrinks by the same pixels the content scrolls. Shrinking the spacer
+  as well moves the content twice as fast as the finger.
+- **Constraining the stack's height from its own measured size deadlocks.** On
+  the first frame `headerBodyPx` is 0, so the box is 0dp, so the content
+  measures 0, so `headerBodyPx` stays 0 — and the header never appears at all
+  (seen on the device: the hero card sat under the status bar). The box is left
+  unconstrained until it has been measured once; collapse is 0 then anyway, so
+  it looks identical.
+- **The inner column takes `wrapContentHeight(unbounded = true)`**, so the size
+  reported to `onSizeChanged` is its natural height rather than whatever the box
+  has shrunk to. Without it the collapse distance chases its own tail.
+
+The status-bar spacer lives *outside* the clipped region, or content slides
+behind the status bar.
+
+**`Color.copy(alpha = x)` replaces the alpha, it does not scale it.** The
+hairline fades in with the collapse, and writing
+`colors.stroke.copy(alpha = progress)` overwrote `stroke`'s own 8% and painted a
+**solid white bar** across the screen at full collapse (solid black in light
+mode). Multiply instead: `copy(alpha = colors.stroke.alpha * progress)`. Every
+token in `DesignColors` that carries alpha - `stroke`, `strokeAccent` - has the
+same trap.
+
+**The hairline occupies a pixel, so the content spacer has to pay for it.**
+Reserving only `statusBar + headerBody` put the rule on top of the hero card's
+first row and shaved its top rounded corner - small, but visible as the card
+"being cut" at rest.
+
+### The FAB yields while reading
+
+It hides on scroll-down and returns on the first upward drag, with a 14px dead
+zone so fling wobble does not flap it, and is always visible at rest at the top.
+The direction comes from `snapshotFlow { scroll.value }` inside a single
+`LaunchedEffect(scroll)` — **keying the effect on `scroll.value` instead makes
+Compose cancel and restart it on every scrolled pixel.**
+
+### Superseded: the app bar used to be pinned alone
+
+`AppBar` sits **outside** the scrolling column, which takes `weight(1f)`; the
+greeting row is inside it. That matches the mockup, where the header is the only
+`position: fixed` element on the page. The header is opaque rather than the
+mockup's translucent blur - Compose Multiplatform has no backdrop blur in common
+code, and content scrolling under an opaque bar clips cleanly at its edge.
+
+**Verifying a scroll position without being able to scroll**: the iOS simulator
+takes no input (see "Driving the simulator"), so the pinned header was proved by
+temporarily passing `rememberScrollState(initial = 700)`, screenshotting, and
+reverting. Cheap, and it beats reasoning about a layout from the source.
+
+### Where the data was not there
+
+Three deliberate departures from the mockup, all for missing data rather than
+taste — do not "fix" them without adding the data first:
+
+- Recent rows read `Food · Today`, not `Food · Today, 4:15 PM`. The `expenses`
+  table stores a `yyyy-MM-dd` date and no clock time (it is the old app's
+  schema, kept so an update can read an existing install).
+- The AI card's copy comes from `HomeInsightEngine`. The mockup's "Swiggy orders
+  on weekends are driving the spike" implies merchant-level analysis the app has
+  no data for.
+- The bell is inert; there is no notification feed.
+
+`HomeUiState` gained `daysLeft`, `dailyAverage`, `recent` and `paceLabel` for
+this screen. **`paceLabel` allows a 10-point grace** against the month's
+elapsed percentage: a strict comparison calls any month "running high" after one
+ordinary purchase on the 2nd, and the mockup itself shows "On track" at 50%
+spent with 18 of 30 days left.
+
+### Verified on the iPhone SE simulator 2026-10-03
+
+Both targets build. The screen was rendered and compared against `screen.png`:
+app bar, greeting, hero card (figure, days left, progress, pace, three stats),
+the breakdown donut with its legend, the AI card, Recent, the FAB and the new
+nav bar all match. **Android has not seen it** — the phone was disconnected.
+
+To get a seeded simulator rather than the onboarding gate: write a typed
+`prefs_onboarding.plist` into `<container>/Library/Preferences` (a plist written
+with `plutil` from a shell heredoc comes out as *strings* and `getBoolean` then
+reads false — use explicit `<true/>`/`<integer>` XML), launch once so Room
+creates `Documents/fixmoney.db`, then `sqlite3` rows straight in.
+
 ## Blockers and not-done
 
-- **Android has never been run.** (iOS is verified; this is the gap.) The debug APK builds (`com.vikram641.expensetracker.kmp`, 11 MB) but no device has been connected yet, so the Android side is build-verified only — unlike iOS, nothing has been seen running.
+- ~~Android has never been run.~~ **Cleared 2026-10-02** — see "Verified on a real Android device" under "Testing on Android".
 - **No Apple Developer account** ($99/yr). `TEAM_ID` in `iosApp/Configuration/Config.xcconfig` is deliberately empty. Needed before device testing or TestFlight.
-- No Room, no Firebase, no ads, no charts. Onboarding is only 1 of 3 steps (name); budget and currency screens are not built, so `saveProfile` currently hardcodes `monthlyBudget = 0` and `currencyCode = "INR"`.
-- The real dashboard does not exist — `HomePlaceholderScreen` just greets the saved name.
+- **Scan Receipt is built but unrun.** See "Feature 6" - it compiles for both targets and has never been exercised on hardware. **Attach Photo** stays inert, which matches the old app.
+- **No avatar picker** - Edit Profile shows the initial. The old `AvatarManager` / `AvatarPickerBottomSheet` are not migrated, so the mockup's camera badge has nowhere to go.
+- **Every screen is on the new design**, splash included.
+- **Settings has six stored-but-inert switches**, each marked PREVIEW - see "Settings, redesigned". They are preferences with no reader; drop the pill as each feature is wired. Mockups for all of them are in `~/Downloads/stitch_fixmoney_fintech_app_design/`.
+- **Only Home keeps the app bar.** Expenses and Analytics pass `title = null` to `CollapsingScreen`, so their own title row is the header - the logo/bell/avatar strip would just repeat what Home shows.
+- ~~**Export Data writes nothing.**~~ **Wired 2026-10-03** on both platforms; the iOS file is not yet reachable from the Files app - see "Second fixes pass".
+- **No AdMob**, and no Gemini tier for either the chat or voice parsing (Android-only SDK; plan section 6.2 has the REST route).
+- ~~**`weekSpent` is still 0** on Home.~~ **Fixed 2026-10-03** - see `platform/DateMath.kt`.
+- **Settings' preference stores do not match the old app's** - see "Known preference-store mismatch" above.
+- **Changing the budget still does not rewrite the budget rows.** Onboarding writes them, and Home now reads them, so the two agree - but there is no way to edit the overall monthly figure after onboarding except per-category on the Budget screen.
+- **An install that onboarded before 2026-10-03 has no budget rows** and still opens Budget empty. There is no backfill; "+ Set Budget" is the way out.
 
 ## Repo
 
 Private GitHub repo `vikram641/Fix-Money-KMP`, branch `main`. Commits use the global git identity (`vikram8575229@gmail.com`) — **do not override the author with `-c user.email=...`**; an early commit did and had to be rewritten so GitHub would link it to the profile.
+
+## Theme wipe (2026-10-03)
+
+`ui/ThemeReveal.kt` - the dark/light switch spreads out from the toggle instead
+of snapping, like colour poured on at that point.
+
+A theme change repaints everything at once, so there is **nothing left to
+animate from**. The old screen is therefore photographed first: the live UI is
+drawn through a `GraphicsLayer`, the last frame is read back on tap (still the
+old theme, because the capture happens *before* the switch is applied), the
+theme flips, and for the length of the animation that photograph is painted on
+top with a growing circular hole at the tap point.
+
+Nothing is re-laid-out, so content underneath cannot jump mid-wipe - the only
+thing changing is how much of the old photo is left.
+
+**Recording is off by default.** Routing the whole app through an offscreen
+layer every frame to serve one switch inside Settings would tax scrolling
+everywhere else, so `ArmThemeReveal()` turns it on only while Settings is on
+screen. `LocalThemeReveal` is nullable and every failure path - not armed,
+already mid-wipe, capture returned null - just applies the theme with no
+animation. **A theme switch must never be lost to a missing snapshot.**
+
+The radius grows to the farthest corner from the tap, not the nearest, or the
+far corner finishes last and the wipe looks lopsided.
+
+## One header height for every tab (2026-10-03)
+
+`HEADER_BAND` in `DesignScaffold.kt` is the strip under the status bar. Home
+spends it on `DesignAppBar`; Expenses, Analytics, Budget and Settings spend it
+on their own title row via `ScreenTitleBand`. Both read the same value.
+
+Those four screens used to start their title 2dp under the status bar, about
+18dp higher than Home's app-bar title - too small to read as a design, big
+enough to show as a jump on every tab change. Centring each title row in the
+shared band fixes it **for any title size**, with no per-screen offset to drift.
+
+A new screen's title goes in a `ScreenTitleBand`, never in a hand-padded Column.
+
+## Onboarding and setup, rebuilt (2026-10-03)
+
+Eight screens to the Stitch "obsidian dark" mockups: Welcome, three feature
+slides, then name / budget / currency / all-set.
+
+`ui/onboarding/OnboardingParts.kt` holds what they share - `GlowTile`,
+`TagPill`, `StepDots`, `GlowButton`, `SetupHeader`, `SetupIconTile`.
+
+**Glows are radial gradients, never `Modifier.blur`.** The first attempt stacked
+concentric rounded rectangles of falling alpha and it banded visibly on device:
+each ring drew its own hard edge, so the halo read as nested outlines rather
+than light. `blur` would also work and is the one thing in these screens that
+does not render identically on Android and iOS - not a trade worth making on the
+first screen a user ever sees.
+
+`GlowTile` is a solid purple slab with a white glyph, for when the icon is the
+subject. `SetupIconTile` is a tinted plate with an accent glyph, for when it is
+a label above a question. They are not interchangeable.
+
+`formatIndian` lives in `OnboardingParts.kt`. It used to sit on the budget step
+and moved when that screen was rebuilt - Edit Profile and the SIP calculator
+import it, so it must stay in `com.fixmoney.ui.onboarding`.
+
+There is **no `nd_chevron_left`** in the icon set; `SetupHeader` mirrors
+`nd_chevron_right` with `scale(scaleX = -1f)`.
+
+### What the mockups claim that the app does not do
+
+Checked before changing anything: no bill, due-date or recurrence model in
+`shared/`, no notification code anywhere, no encryption, no sync.
+`budgetAlerts()` is read by its own Settings switch and by nothing else.
+
+| Mockup said | Shipped instead | Why |
+|---|---|---|
+| Slide 2: recurring bills, auto-debit, calendar sync | Per-category budgets | No such model exists |
+| Slide 3: push alerts before a bill is due | Ask Fixoo about your spending | Nothing notifies |
+| Welcome: "Encrypted", "Zero-Knowledge Vault" | "On this device", "Works Offline" | Plain local Room DB |
+| Welcome: "Auto Budget Caps" | "Category Budgets" | Nothing is automatic |
+| Welcome: "ACTIVE PULSE" status dot | "EVERY RUPEE, TRACKED" | Implies an account and a connection |
+| All set: "256-BIT ENCLAVE READY" / "SYNCED" | "STORED ON THIS DEVICE" / "OFFLINE" | Encrypts nothing, syncs nowhere |
+| All set: "Automatic cycle" | "Resets each calendar month" | Fiscal-cycle start is still PREVIEW |
+
+These are the first screens a new user sees - the worst place to promise
+something absent. Both replacement slides are real on Android *and* iOS, which
+ruled out voice quick-add (Android only). Restore a page the moment its feature
+lands; `FeaturePage` takes any three.
+
+The currency step keeps **all 14** currencies. The mockup crops to five because
+that is what fits on one screen, not because the rest should go.
+
+### Seeing these screens again
+
+They only appear before onboarding completes. To re-check them, temporarily
+force `Routes.WELCOME` in App.kt's splash hop, and **revert it before
+installing again** - left in, the app opens on Welcome every launch. Walking the
+flow is safe up to All Set; only "Start Tracking" calls `complete()` and writes
+the profile. Back up first with
+`adb shell run-as <pkg> tar -cf - shared_prefs databases`.
+
+## Scale work before launch (2026-10-03)
+
+Measured, not guessed. The app is offline-first with no per-user server, so
+download count costs nothing - the ceilings were elsewhere.
+
+### Firestore was the first wall, at roughly 3,000 DAU
+
+Every cold start spent **8 document reads**: seven for `categories` (billing is
+per document returned, and there are seven) plus one for `feature_flags`. The
+free plan allows 50,000/day across the project, so ~6,250 cold starts - about
+3,000 daily users at two launches each.
+
+Two fixes, both about caching rather than quota:
+
+- `CategoryRepository` cached **in memory only**, so the cache died with the
+  process and every cold start refetched. It now persists to `Settings` with a
+  24h TTL, and falls back to a *stale* copy before the seeded defaults - a stale
+  real list still carries edits the defaults never had.
+
+  `Category` had to gain `@Serializable` for this. It compiled without it,
+  because `encodeToString` resolves the serializer at **runtime** - the write
+  threw `SerializationException` on device and the catch swallowed it, so the
+  cache silently never existed while everything appeared to work. Worth
+  remembering: a green build says nothing about a serializer being present.
+- `FeatureFlagRepository.refresh()` ran on every launch. It now skips the fetch
+  if the last one was under 6h ago; `refresh(force = true)` bypasses that. The
+  persisted values carry the app between fetches, so a skipped fetch costs
+  nothing.
+
+Together these cut steady-state reads to near zero and move the wall out by
+roughly an order of magnitude - on the free plan.
+
+Verified on device: a second cold start leaves `categories_cached_at` unchanged,
+i.e. the list is served from disk and Firestore is never called.
+
+**The earlier "~3,000 DAU" figure was too pessimistic.** It assumed 8 reads per
+cold start, but `getCategories()` runs only from Add Expense, Budget, onboarding
+and the scan/voice engines - never from Home. A launch that only opens Home was
+always 1 read, not 8.
+
+### Destructive migration was a loaded gun
+
+`buildDatabase` used `fallbackToDestructiveMigration(dropAllTables = true)` with
+a comment saying to revisit it before the first upload. Adding an index bumps
+the schema, which would have **deleted every expense on every install** - and
+this app holds the only copy, there is no backend to restore from.
+
+Replaced with real migrations (`Migrations.kt`, `ALL_MIGRATIONS`). A missing
+migration now throws instead: a crash in development is a bug report, a wiped
+ledger is a one-star review.
+
+**Every schema change from here needs a migration.** Index names must match
+Room's generated `index_<table>_<column>` or validation fails on open.
+
+### Home read the whole table on every change
+
+`observeExpenses()` was `SELECT * FROM expenses` with no index anywhere, re-read
+and re-derived on every insert. Fine at a few hundred rows; a multi-year user
+with tens of thousands paid for all of them on every edit.
+
+Now `observeExpensesBetween(from, to)` over a `LOOKBACK_DAYS = 45` window before
+the selected month - far enough back for the insight baseline, which ends a week
+ago and runs three weeks back, so on the 1st it reaches 27 days into the
+previous month. That was the original reason for reading the table whole; the
+window keeps the fix without the cost.
+
+The query carries **no `ORDER BY`**: `build()` re-sorts for its Recent list and
+otherwise only sums, groups and range-filters, so ordering forced a temp B-tree
+for nothing. Verified against a copy of a real device database:
+
+```
+before: SCAN expenses
+after : SEARCH expenses USING INDEX index_expenses_date (date>? AND date<?)
+```
+
+### Where the ceilings are now
+
+| Layer | Limit |
+|---|---|
+| App core (offline) | no per-user cost; downloads are free to serve |
+| Worker proxy | 100k req/day free, then ~$5/mo per 10M |
+| Firestore | was ~3,000 DAU; now bounded by cache TTLs, not launches |
+| AI calls | scales with *actions*, not users; paid Groq is the cost driver |
+| Workers KV | 1,000 writes/day free - if the per-IP limiter is enabled it caps there; use Durable Objects or the rate-limiting binding at scale |
+| Per-device data | indexed and windowed; no longer tied to ledger lifetime |
+

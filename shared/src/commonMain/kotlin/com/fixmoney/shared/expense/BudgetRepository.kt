@@ -11,14 +11,26 @@ import kotlinx.coroutines.flow.combine
 /** One row of the Budget screen: the limit, and how much of it is spent. */
 data class BudgetProgress(
     val id: String,
+    val categoryId: String,
     val categoryName: String,
     val categoryColor: String,
     val categoryIcon: String,
     val limit: Int,
     val spent: Int
 ) {
+    /** Clamped to 0..100 - what a progress bar's fill can actually express. */
     val percent: Int
-        get() = if (limit <= 0) 0 else ((spent * 100L) / limit).toInt().coerceIn(0, 100)
+        get() = rawPercent.coerceIn(0, 100)
+
+    /**
+     * **Uncapped.** The clamped one cannot tell "exactly at the cap" from
+     * "double it", and the status label has to.
+     */
+    val rawPercent: Int
+        get() = if (limit <= 0) 0 else ((spent * 100L) / limit).toInt()
+
+    val remaining: Int get() = limit - spent
+    val isOver: Boolean get() = spent > limit
 }
 
 class BudgetRepository(
@@ -43,6 +55,7 @@ class BudgetRepository(
             budgetRows.map { budget ->
                 BudgetProgress(
                     id = budget.id,
+                    categoryId = budget.categoryId,
                     categoryName = budget.categoryName,
                     categoryColor = budget.categoryColor,
                     categoryIcon = budget.categoryIcon,
@@ -76,8 +89,13 @@ class BudgetRepository(
     ) {
         if (categories.isEmpty()) return
         val each = total / categories.size
+        // Integer division loses the remainder, so 25,000 over 7 categories
+        // rolled up to 24,997 on the Budget screen while Home - which reads the
+        // raw preference - still said 25,000. The leftover goes to the first
+        // row so the two screens agree.
+        val remainder = total - each * categories.size
         budgets.upsertAll(
-            categories.map { category ->
+            categories.mapIndexed { index, category ->
                 BudgetEntity(
                     id = "local-${category.id}-$month",
                     categoryId = category.id,
@@ -85,7 +103,7 @@ class BudgetRepository(
                     categoryColor = category.color,
                     categoryIcon = category.icon,
                     currency = currency,
-                    limitAmount = each,
+                    limitAmount = if (index == 0) each + remainder else each,
                     month = month
                 )
             }

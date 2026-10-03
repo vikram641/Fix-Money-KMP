@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Only the public Downloads folder the legacy export writes into. Narrow on
+  purpose: a provider that exposes more than the one file it has to is a way to
+  leak the app's private storage to anything that can guess a path.
+-->
+<paths>
+    <external-path
+        name="exports"
+        path="Download/FixMoney Exports/" />
+</paths>

@@ -37,6 +37,6 @@ class ChatEngine(
         }
 
         val historyText = history.joinToString("\n") { (q, a) -> "Q: $q\nA: $a" }
-        return GroqChatAssistant.ask(Secrets.GROQ_API_KEY, question, summary, historyText)
+        return GroqChatAssistant.ask(question, summary, historyText)
     }
 }

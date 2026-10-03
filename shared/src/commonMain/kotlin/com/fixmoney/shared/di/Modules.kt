@@ -1,16 +1,22 @@
 package com.fixmoney.shared.di
 
 import com.fixmoney.shared.ai.ChatEngine
+import com.fixmoney.shared.config.FeatureFlagRepository
+import com.fixmoney.shared.analytics.AnalyticsStateFactory
 import com.fixmoney.shared.data.CategoryRepository
 import com.fixmoney.shared.db.DatabaseBuilderFactory
 import com.fixmoney.shared.db.FixMoneyDatabase
 import com.fixmoney.shared.db.buildDatabase
 import com.fixmoney.shared.expense.BudgetRepository
+import com.fixmoney.shared.expense.BudgetStateFactory
 import com.fixmoney.shared.expense.ExpenseRepository
+import com.fixmoney.shared.export.ExpenseExporter
 import com.fixmoney.shared.home.HomeStateFactory
 import com.fixmoney.shared.onboarding.AppPrefs
 import com.fixmoney.shared.onboarding.OnboardingPrefs
 import com.fixmoney.shared.platform.httpClient
+import com.fixmoney.shared.receipt.ReceiptScanEngine
+import com.fixmoney.shared.voice.VoiceQuickAddEngine
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpTimeout
 import com.russhwolf.settings.Settings
@@ -37,11 +43,17 @@ val sharedModule = module {
     single<FixMoneyDatabase> { buildDatabase(get()) }
     single { get<FixMoneyDatabase>().expenseDao() }
     single { get<FixMoneyDatabase>().budgetDao() }
-    single { CategoryRepository(get()) }
+    single { CategoryRepository(get(), get()) }
+    single { FeatureFlagRepository(get(), get()) }
     single { ExpenseRepository(get()) }
     single { BudgetRepository(get(), get()) }
+    single { BudgetStateFactory(get(), get(), get()) }
     single { ChatEngine(get(), get()) }
-    single { HomeStateFactory(get(), get()) }
+    single { HomeStateFactory(get(), get(), get()) }
+    single { AnalyticsStateFactory(get(), get(), get()) }
+    single { VoiceQuickAddEngine(get(), get(), get()) }
+    single { ReceiptScanEngine(get()) }
+    single { ExpenseExporter(get(), get()) }
 }
 
 /** Provides the platform's Settings implementation (SharedPreferences / NSUserDefaults). */

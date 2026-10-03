@@ -3,6 +3,37 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Settings > Export Data, API 24-28 only. MediaStore has no Downloads
+         collection before API 29, so the CSV goes to the legacy public
+         Downloads dir there; from API 29 on it is scoped storage and this
+         permission is neither declared nor needed. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <!-- Receipt scanner. The photo is never written to disk and never read from
+         the gallery, so no storage or media permission is involved. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
+    <!-- Floating Voice Quick-Add: a draggable bubble over every other app that
+         listens on tap and files what you say as an expense. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Android 13+: without it the foreground service still runs, but its
+         ongoing notification is silently dropped. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Makes the on-device speech recognizer visible to this app under Android 11+
+         package-visibility rules (SpeechRecognizer binds to it directly). -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+
     <application
         android:name="com.fixmoney.FixMoneyApp"
         android:allowBackup="true"
@@ -22,5 +53,30 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Hands an exported CSV to another app. Needed only on API 24-28,
+             where the export is a plain file in public Downloads and a `file://`
+             URI would throw FileUriExposedException; API 29+ exports through
+             MediaStore and already has a shareable content:// URI. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.exports"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/export_paths" />
+        </provider>
+
+        <!-- A foreground service so the overlay window and the mic survive while
+             FixMoney itself isn't in the foreground. -->
+        <service
+            android:name="com.fixmoney.voice.FloatingBubbleService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Floating voice button to add an expense by speaking" />
+        </service>
     </application>
 </manifest>

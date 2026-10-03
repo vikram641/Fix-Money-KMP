@@ -44,6 +44,13 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
+            implementation(libs.androidx.core.ktx)
+            // The in-app receipt camera. Android only - iOS uses the system
+            // image picker, see ReceiptCapture.ios.kt.
+            implementation(libs.androidx.camera.core)
+            implementation(libs.androidx.camera.camera2)
+            implementation(libs.androidx.camera.lifecycle)
+            implementation(libs.androidx.camera.view)
             implementation(project.dependencies.platform(libs.koin.bom))
             implementation(libs.koin.android)
         }

@@ -22,7 +22,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 private const val TAG = "GroqChatAssistant"
-private const val GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 // Verified live against this project's Groq key via GET /openai/v1/models (2026-08-28) -
 // llama-3.3-70b-versatile came back 404 model_not_found; this one is active and supports
 // json_mode. Re-check the models endpoint if this ever 404s again - Groq's free-tier
@@ -54,15 +53,12 @@ object GroqChatAssistant {
     }
 
     suspend fun ask(
-        apiKey: String,
         question: String,
         dataSummary: String,
         historyText: String
     ): ChatAskResult {
-        if (apiKey.isBlank()) return ChatAskResult.Failure
-
         return try {
-            withTimeout(20_000) { call(apiKey, question, dataSummary, historyText) }
+            withTimeout(20_000) { call(question, dataSummary, historyText) }
         } catch (e: TimeoutCancellationException) {
             logWarn(TAG, "ask timed out: ${e.message}")
             ChatAskResult.Failure
@@ -73,7 +69,6 @@ object GroqChatAssistant {
     }
 
     private suspend fun call(
-        apiKey: String,
         question: String,
         dataSummary: String,
         historyText: String
@@ -130,8 +125,7 @@ object GroqChatAssistant {
                     "DATA:\n$dataSummary" +
                     (if (historyText.isNotBlank()) "\n\nEARLIER IN THIS CHAT:\n$historyText" else "")
 
-        val response: HttpResponse = client.post(GROQ_URL) {
-            header("Authorization", "Bearer $apiKey")
+        val response: HttpResponse = client.post(AiProxy.CHAT_URL) {
             contentType(ContentType.Application.Json)
             setBody(
                 GroqRequest(

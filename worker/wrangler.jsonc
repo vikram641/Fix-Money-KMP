@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fixmoney-ai-proxy",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+
+  // Tier two when Groq is out of quota. No key, no second account.
+  "ai": { "binding": "AI" }
+
+  // Per-IP daily cap. Create the namespace, then uncomment:
+  //   npx wrangler kv namespace create RATE
+  // "kv_namespaces": [{ "binding": "RATE", "id": "<id printed by that command>" }]
+}

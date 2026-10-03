@@ -9,6 +9,7 @@ minSdk = "24"
 targetSdk = "36"
 
 androidxActivityCompose = "1.10.1"
+androidxCore = "1.16.0"
 androidxLifecycle = "2.9.1"
 coroutines = "1.10.2"
 serialization = "1.8.1"
@@ -22,6 +23,15 @@ compottie = "2.0.2"
 room = "2.7.2"
 sqlite = "2.5.2"
 ksp = "2.2.0-2.0.2"
+
+# Receipt scanner, Android half. Same versions the old app shipped: CameraX
+# 1.4.2 is also the release that fixed the 16 KB page-size requirement, so do
+# not drop below it. Both are Android-only - iOS uses the Vision framework,
+# which ships with the OS and needs no dependency, so neither of these has to
+# clear the iosX64 / Kotlin-version klib gate.
+cameraX = "1.4.2"
+mlkitTextRecognition = "16.0.1"
+coroutinesPlayServices = "1.10.2"
 
 [libraries]
 # --- shared (business logic, no UI) ---
@@ -51,8 +61,21 @@ multiplatform-settings = { module = "com.russhwolf:multiplatform-settings", vers
 compottie = { module = "io.github.alexzhirkevich:compottie", version.ref = "compottie" }
 compottie-resources = { module = "io.github.alexzhirkevich:compottie-resources", version.ref = "compottie" }
 
+# --- receipt scanner (Android only) ---
+# On-device OCR: reads the photo locally, free and offline, then the shared
+# ReceiptTextParser sends the resulting text to Groq.
+mlkit-text-recognition = { module = "com.google.mlkit:text-recognition", version.ref = "mlkitTextRecognition" }
+# Gives ML Kit's Task an `await()`.
+kotlinx-coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-play-services", version.ref = "coroutinesPlayServices" }
+androidx-camera-core = { module = "androidx.camera:camera-core", version.ref = "cameraX" }
+androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "cameraX" }
+androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "cameraX" }
+androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "cameraX" }
+
 # --- composeApp (UI) ---
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivityCompose" }
+# NotificationCompat for the voice bubble's foreground-service notification.
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
 androidx-lifecycle-viewmodel-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidxLifecycle" }
 androidx-lifecycle-runtime-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidxLifecycle" }
 

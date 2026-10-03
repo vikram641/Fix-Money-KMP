@@ -1,5 +1,13 @@
 package com.fixmoney.ui.home
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -18,9 +26,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fixmoney.resources.*
+import com.fixmoney.shared.config.FeatureFlag
 import com.fixmoney.ui.AppTheme
+import com.fixmoney.ui.isEnabled
+import com.fixmoney.ui.Design
+import com.fixmoney.ui.designType
 import com.fixmoney.ui.analytics.AnalyticsScreen
 import com.fixmoney.ui.budget.BudgetScreen
+import com.fixmoney.ui.components.LineIcon
+import com.fixmoney.ui.components.horizontalSwipe
 import com.fixmoney.ui.expense.ExpensesScreen
 import com.fixmoney.ui.settings.SettingsScreen
 import org.jetbrains.compose.resources.DrawableResource
@@ -32,82 +46,143 @@ import org.jetbrains.compose.resources.painterResource
  * their features are migrated.
  */
 enum class DashboardTab(val label: String, val icon: DrawableResource) {
-    Home("Home", Res.drawable.img_home),
-    Expenses("Expenses", Res.drawable.exp),
-    Analytics("Analytics", Res.drawable.ic_any),
-    Budget("Budget", Res.drawable.ic_bug),
-    Settings("Settings", Res.drawable.ic_set)
+    Home("Home", Res.drawable.nd_home),
+    Expenses("Expenses", Res.drawable.nd_expenses),
+    Analytics("Analytics", Res.drawable.nd_analytics),
+    Budget("Budget", Res.drawable.nd_budget),
+    Settings("Settings", Res.drawable.nd_settings)
 }
+
+/** How long a tab change takes. */
+private const val TAB_SLIDE_MS = 260
 
 @Composable
 fun DashboardScreen(
     onAddExpense: () -> Unit = {},
     onAskAi: () -> Unit = {},
+    darkTheme: Boolean = true,
     onDarkModeChanged: (Boolean) -> Unit = {},
-    onOpenSip: () -> Unit = {}
+    onOpenSip: () -> Unit = {},
+    onOpenProfile: () -> Unit = {},
+    onOpenExpense: (String) -> Unit = {}
 ) {
     val colors = AppTheme.colors
+    val design = Design.colors
+    val t = designType()
+    // A tab the flags have switched off disappears from the bar *and* from the
+    // swipe order, so swiping never lands on a screen that is not offered.
+    val tabs = DashboardTab.entries.filter { entry ->
+        when (entry) {
+            DashboardTab.Analytics -> isEnabled(FeatureFlag.AnalyticsTab)
+            DashboardTab.Budget -> isEnabled(FeatureFlag.BudgetTab)
+            else -> true
+        }
+    }
     var tab by remember { mutableStateOf(DashboardTab.Home) }
 
+    // The selected tab can vanish under the user when a refresh lands mid-use.
+    LaunchedEffect(tabs) {
+        if (tab !in tabs) tab = DashboardTab.Home
+    }
+
+    // Swiping moves one tab along; the tabs are a flat row, so it clamps at
+    // both ends rather than wrapping - wrapping from Settings back to Home
+    // reads as a mis-tap, not navigation.
+    val step: (Int) -> Unit = { delta ->
+        // Indexed into the *visible* list, not the enum - with a tab hidden the
+        // two no longer line up.
+        val current = tabs.indexOf(tab).coerceAtLeast(0)
+        val next = (current + delta).coerceIn(0, tabs.lastIndex)
+        if (next != current) tab = tabs[next]
+    }
+
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f)) {
-            when (tab) {
-                DashboardTab.Home -> HomeScreen(onAddExpense = onAddExpense, onAskAi = onAskAi)
-                DashboardTab.Expenses -> ExpensesScreen()
-                DashboardTab.Budget -> BudgetScreen()
-                DashboardTab.Settings -> SettingsScreen(
-                    onDarkModeChanged = onDarkModeChanged,
-                    onOpenSip = onOpenSip
-                )
-                DashboardTab.Analytics -> AnalyticsScreen()
+        Box(
+            Modifier.weight(1f)
+                .background(design.surface)
+                .horizontalSwipe(onSwipeLeft = { step(1) }, onSwipeRight = { step(-1) })
+        ) {
+            // The slide direction comes from which way the index moved, so a
+            // swipe and a tab tap both push the new screen in from the side it
+            // actually lives on. `targetState.ordinal > initialState.ordinal`
+            // is read inside the transform, where both are in scope.
+            AnimatedContent(
+                targetState = tab,
+                transitionSpec = {
+                    val forward = tabs.indexOf(targetState) > tabs.indexOf(initialState)
+                    val width = { full: Int -> if (forward) full else -full }
+                    (slideInHorizontally(tween(TAB_SLIDE_MS)) { width(it) } +
+                        fadeIn(tween(TAB_SLIDE_MS))) togetherWith
+                        (slideOutHorizontally(tween(TAB_SLIDE_MS)) { -width(it) } +
+                            fadeOut(tween(TAB_SLIDE_MS))) using
+                        // Without this the container animates between the two
+                        // screens' heights and every tab change jolts vertically.
+                        SizeTransform(clip = false)
+                },
+                label = "tab"
+            ) { current ->
+                when (current) {
+                    DashboardTab.Home -> HomeScreen(
+                        onAddExpense = onAddExpense,
+                        onAskAi = onAskAi,
+                        onOpenProfile = onOpenProfile,
+                        onSeeAllExpenses = { tab = DashboardTab.Expenses },
+                        onOpenExpense = onOpenExpense
+                    )
+                    DashboardTab.Expenses -> ExpensesScreen(
+                        onOpenExpense = onOpenExpense,
+                        onAddExpense = onAddExpense
+                    )
+                    DashboardTab.Budget -> BudgetScreen()
+                    DashboardTab.Settings -> SettingsScreen(
+                        darkTheme = darkTheme,
+                        onDarkModeChanged = onDarkModeChanged,
+                        onOpenSip = onOpenSip,
+                        onOpenProfile = onOpenProfile
+                    )
+                    DashboardTab.Analytics -> AnalyticsScreen(onAskAi = onAskAi)
+                }
             }
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                // Not `bottomNavBg`: that token is #FFFFFF in colors.xml with no
-                // values-night override, so it stayed white in dark mode.
-                .background(colors.bgCard)
-                // Only the navigation-bar inset. `safeDrawingPadding()` applies
-                // every inset including the status bar's, which showed up as a
-                // large empty gap above these icons.
-                .navigationBarsPadding()
-                .padding(vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            DashboardTab.entries.forEach { item ->
-                val selected = item == tab
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(18.dp))
-                        .clickable { tab = item }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
+        // The 2026 nav bar: a darker-than-page slab with a hairline on top, a
+        // tinted pill behind the active tab, and stroke icons tinted by state.
+        // The old bar used the full-colour PNG icons, which cannot be tinted and
+        // so could not show selection at all except through the label.
+        Column {
+            Box(Modifier.fillMaxWidth().height(1.dp).background(design.stroke))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // Background before the inset, so the bar extends under the
+                    // system navigation bar rather than leaving a strip of page.
+                    .background(design.surfaceNav)
+                    .navigationBarsPadding()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                tabs.forEach { item ->
+                    val selected = item == tab
+                    val tint = if (selected) design.accent else design.textMuted
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
+                            .clip(RoundedCornerShape(22.dp))
                             .background(
-                                if (selected) colors.accent.copy(alpha = 0.22f) else Color.Transparent
+                                if (selected) design.accent.copy(alpha = 0.15f) else Color.Transparent
                             )
-                            .padding(horizontal = 16.dp, vertical = 5.dp)
+                            .clickable { tab = item }
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
                     ) {
-                        Image(
-                            painter = painterResource(item.icon),
-                            contentDescription = item.label,
-                            modifier = Modifier.size(24.dp)
+                        LineIcon(item.icon, tint, 22.dp)
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            item.label,
+                            style = t.labelCaps,
+                            color = tint
                         )
                     }
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        item.label,
-                        fontSize = 11.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                        color = if (selected) colors.accent else colors.textSecondary
-                    )
                 }
             }
         }

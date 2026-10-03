@@ -15,6 +15,10 @@ class ExpenseRepository(private val dao: ExpenseDao) {
 
     fun observeExpenses(): Flow<List<ExpenseEntity>> = dao.observeExpenses()
 
+    /** Bounded window - see [com.fixmoney.shared.db.ExpenseDao.observeExpensesBetween]. */
+    fun observeExpensesBetween(from: String, to: String): Flow<List<ExpenseEntity>> =
+        dao.observeExpensesBetween(from, to)
+
     fun observeMonth(monthPrefix: String): Flow<List<ExpenseEntity>> =
         dao.observeExpensesForMonth(monthPrefix)
 
@@ -42,6 +46,40 @@ class ExpenseRepository(private val dao: ExpenseDao) {
                 updatedAt = dateIso,
                 isSynced = false,
                 localCreatedAt = now,
+                categoryId = category.id,
+                categoryName = category.name,
+                categoryColor = category.color,
+                categoryIcon = category.icon
+            )
+        )
+    }
+
+    /**
+     * Rewrites an existing row in place. The DAO inserts with
+     * `OnConflictStrategy.REPLACE`, so re-inserting the same primary key is the
+     * update - there is no separate `@Update` to keep in step.
+     *
+     * [ExpenseEntity.createdAt] and [ExpenseEntity.localCreatedAt] are carried
+     * over from the original rather than reset: they are when the expense was
+     * *recorded*, and editing an amount does not change that. Only `updatedAt`
+     * moves.
+     */
+    suspend fun updateExpense(
+        existing: ExpenseEntity,
+        amount: Int,
+        currency: String,
+        dateIso: String,
+        note: String,
+        category: Category
+    ) {
+        dao.insertExpense(
+            existing.copy(
+                amount = amount.toString(),
+                currency = currency,
+                date = dateIso,
+                note = note,
+                updatedAt = dateIso,
+                isSynced = false,
                 categoryId = category.id,
                 categoryName = category.name,
                 categoryColor = category.color,

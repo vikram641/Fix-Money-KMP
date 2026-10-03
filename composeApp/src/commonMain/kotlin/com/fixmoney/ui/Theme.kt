@@ -87,6 +87,14 @@ data class AppColors(
     val aiInsightBgStart: Color,
     val aiInsightBgEnd: Color,
     val aiInsightStroke: Color,
+    /**
+     * Which of the two sets this is. A handful of places need the *screen*
+     * colour rather than a token - the bottom nav bar has to sit on the same
+     * navy as the content above it in dark mode but stay white on the off-white
+     * light page - and reading `isSystemInDarkTheme()` there would be wrong:
+     * Settings' own switch can put the app in dark mode on a light phone.
+     */
+    val isDark: Boolean = false,
 )
 
 val LightColors = AppColors(
@@ -211,7 +219,19 @@ val DarkColors = AppColors(
     aiInsightBgStart = Color(0xFF241F45),
     aiInsightBgEnd = Color(0xFF1A1830),
     aiInsightStroke = Color(0xFF3D3566),
+    isDark = true,
 )
+
+/**
+ * The bottom navigation bar's background - and, because the app draws behind it,
+ * the colour the **system** navigation bar has to be painted too, or the two
+ * meet in a visible seam.
+ *
+ * Dark mode uses `bgPrimary`, the same navy as the content above it; `bgCard` is
+ * a lighter navy and drew the bar as a paler slab. Light mode keeps `bgCard`
+ * (white) so the bar still separates from the off-white page.
+ */
+val AppColors.bottomBar: Color get() = if (isDark) bgPrimary else bgCard
 
 val LocalAppColors = staticCompositionLocalOf { LightColors }
 
@@ -256,7 +276,13 @@ fun FixMoneyTheme(
         )
     }
 
-    CompositionLocalProvider(LocalAppColors provides colors) {
+    CompositionLocalProvider(
+        LocalAppColors provides colors,
+        // The redesign's palette rides alongside the generated one; a screen
+        // that has been redesigned reads `Design.colors`, the rest read
+        // `AppTheme.colors`. See DesignTokens.kt for why they are separate.
+        LocalDesignColors provides if (darkTheme) DesignDark else DesignLight
+    ) {
         MaterialTheme(colorScheme = scheme, typography = poppinsTypography(), content = content)
     }
 }
