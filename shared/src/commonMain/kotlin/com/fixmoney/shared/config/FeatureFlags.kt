@@ -109,10 +109,7 @@ enum class FeatureFlag(val key: String) {
     FrostedGlass("frosted_glass"),
 
     /** Tactile Haptics. */
-    TactileHaptics("tactile_haptics"),
-
-    /** Zero-Knowledge Keyphrase. */
-    ZeroKnowledgeKeyphrase("zero_knowledge_keyphrase")
+    TactileHaptics("tactile_haptics")
 }
 
 /**

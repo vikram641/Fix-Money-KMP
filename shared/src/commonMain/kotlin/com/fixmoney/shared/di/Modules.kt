@@ -19,6 +19,7 @@ import com.fixmoney.shared.receipt.ReceiptScanEngine
 import com.fixmoney.shared.voice.VoiceQuickAddEngine
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpTimeout
+import com.fixmoney.shared.premium.TrialState
 import com.russhwolf.settings.Settings
 import org.koin.core.KoinApplication
 import org.koin.core.context.startKoin
@@ -40,6 +41,7 @@ val sharedModule = module {
     }
     single { OnboardingPrefs(get()) }
     single { AppPrefs(get()) }
+    single { TrialState(get()) }
     single<FixMoneyDatabase> { buildDatabase(get()) }
     single { get<FixMoneyDatabase>().expenseDao() }
     single { get<FixMoneyDatabase>().budgetDao() }

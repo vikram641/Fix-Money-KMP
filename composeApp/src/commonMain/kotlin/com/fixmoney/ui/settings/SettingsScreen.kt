@@ -324,17 +324,15 @@ fun SettingsScreen(
                                     )
                                 })
                             }
-                            if (isEnabled(FeatureFlag.ZeroKnowledgeKeyphrase)) {
-                                add(SettingsRow("keyphrase") {
-                                    ChevronRow(
-                                        icon = Res.drawable.nd_key,
-                                        title = "Zero-Knowledge Keyphrase",
-                                        subtitle = "Offline seed storage for the local vault",
-                                        preview = true,
-                                        onClick = {}
-                                    )
-                                })
-                            }
+                            // "Zero-Knowledge Keyphrase / Offline seed storage for
+                            // the local vault" was removed rather than left behind
+                            // its flag. Nothing here is zero-knowledge and there is
+                            // no vault - expenses sit in a plain Room database. A
+                            // security claim in a finance app is exactly the kind
+                            // Play's misrepresentation policy is about, and a
+                            // remote flag is not a safe place to hold one: flags
+                            // fail *open*, so a device that cannot reach Firestore
+                            // would show the claim anyway.
                         }
                     )
                 }
