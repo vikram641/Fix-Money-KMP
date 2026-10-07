@@ -93,7 +93,14 @@ fun ScreenTitleBand(content: @Composable RowScope.() -> Unit) {
 }
 
 @Composable
-fun DesignAppBar(title: String, onOpenProfile: () -> Unit, modifier: Modifier = Modifier) {
+fun DesignAppBar(
+    title: String,
+    onOpenProfile: () -> Unit,
+    modifier: Modifier = Modifier,
+    // Extra item between the bell and the avatar - the AI coins chip on Home.
+    // Added as a slot so the rest of the bar stays exactly as designed.
+    actions: (@Composable () -> Unit)? = null
+) {
     val colors = Design.colors
     val t = designType()
     Row(
@@ -121,6 +128,10 @@ fun DesignAppBar(title: String, onOpenProfile: () -> Unit, modifier: Modifier = 
         // Inert: there is no notification feed to open.
         Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
             LineIcon(Res.drawable.nd_bell, colors.textMuted, 22.dp)
+        }
+        if (actions != null) {
+            actions()
+            Spacer(Modifier.width(8.dp))
         }
         Box(
             modifier = Modifier.size(32.dp).clip(CircleShape)
@@ -168,6 +179,7 @@ fun CollapsingScreen(
     scroll: ScrollState,
     onOpenProfile: () -> Unit = {},
     modifier: Modifier = Modifier,
+    appBarActions: (@Composable () -> Unit)? = null,
     sticky: @Composable () -> Unit,
     body: @Composable ColumnScope.() -> Unit
 ) {
@@ -223,6 +235,7 @@ fun CollapsingScreen(
                         DesignAppBar(
                             title = title,
                             onOpenProfile = onOpenProfile,
+                            actions = appBarActions,
                             modifier = Modifier.onSizeChanged { appBarPx = it.height }
                         )
                     }

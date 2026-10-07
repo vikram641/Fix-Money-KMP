@@ -50,8 +50,22 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
+        <!-- AdMob App ID (not an ad unit) - the same app the old FixMoney uses,
+             since this build ships as an update to that listing. Without it the
+             Mobile Ads SDK crashes the app at startup. -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-7178541936408370~9464292553" />
+
+        <!-- singleTask: the whole app is one activity hosting a NavHost, so a
+             second instance is never wanted. Without it, opening the app from
+             the launcher while a task started some other way (am start, a
+             notification) was already running stacked a *second* MainActivity
+             on top, starting at Home - Back then surfaced the old instance's
+             screen or left the app. Seen on the OnePlus 2026-10-07. -->
         <activity
             android:name="com.fixmoney.MainActivity"
+            android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">

@@ -55,6 +55,19 @@ enum class FeatureFlag(val key: String) {
     /** The whole Budget tab. */
     BudgetTab("budget_tab"),
 
+    /**
+     * AI coins *UI*: the balance chip, the wallet screen and its Settings row.
+     * Only hides the display - charging is decided by the Worker, so turning
+     * coins off for real means setting the costs to 0 in `worker/wrangler.jsonc`.
+     */
+    CoinWallet("coin_wallet"),
+
+    /**
+     * The "Fixoo Premium - coming soon" card on the trial-ended sheet. Display
+     * only; there is no billing yet (that is `feat/premium-subscription`).
+     */
+    PremiumPlan("premium_plan"),
+
     /* --------------------------------------------------- Settings sections
      * A section also disappears on its own once every row inside it is
      * hidden, so these are only needed to drop a whole group in one switch

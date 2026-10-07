@@ -1,5 +1,8 @@
 package com.fixmoney.ui.settings
 
+import androidx.compose.runtime.collectAsState
+import com.fixmoney.ui.coins.LocalCoins
+import com.fixmoney.ui.coins.trialDaysLeft
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -76,6 +79,8 @@ fun SettingsScreen(
     val prefs: OnboardingPrefs = koinInject()
     val appPrefs: AppPrefs = koinInject()
     val voice = rememberVoiceQuickAdd()
+    val coins = LocalCoins.current
+    val coinWallet = coins?.repo?.wallet?.collectAsState()?.value
     val themeReveal = LocalThemeReveal.current
     val scope = rememberCoroutineScope()
 
@@ -121,6 +126,23 @@ fun SettingsScreen(
                         "AI & INTELLIGENCE",
                         trailing = "Fixoo v1",
                         rows = buildList {
+                            // AI coins: the way into the wallet from Settings.
+                            if (coins != null && isEnabled(FeatureFlag.CoinWallet)) {
+                                add(SettingsRow("coins") {
+                                    ChevronRow(
+                                        icon = Res.drawable.nd_wallet,
+                                        title = "Fixoo Coins",
+                                        subtitle = when {
+                                            coinWallet == null -> "Watch videos to earn Fixoo Coins for AI features"
+                                            coinWallet.premiumActive -> "Fixoo Premium active · AI without coins"
+                                            coinWallet.trialActive -> "Free trial · ${trialDaysLeft(coinWallet)} days left"
+                                            else -> "${coinWallet.coins} coins · ${coinWallet.adsLeftToday} videos left today"
+                                        },
+                                        tinted = true,
+                                        onClick = coins.openWallet
+                                    )
+                                })
+                            }
                             if (isEnabled(FeatureFlag.AutonomousGuard)) {
                                 add(SettingsRow("guard") {
                                     PreviewToggleRow(

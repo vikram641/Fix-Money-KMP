@@ -1,5 +1,8 @@
 package com.fixmoney.ui.home
 
+import androidx.compose.runtime.collectAsState
+import com.fixmoney.ui.coins.CoinChip
+import com.fixmoney.ui.coins.LocalCoins
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -137,10 +140,21 @@ fun HomeScreen(
         }
     }
 
+    val coins = LocalCoins.current
     CollapsingScreen(
         title = "Home",
         scroll = scroll,
         onOpenProfile = onOpenProfile,
+        // AI coins balance in the app bar, between the bell and the avatar.
+        // Not in the greeting row, where the Stitch mockup put it: there it
+        // squeezed the greeting to "Good Morning, Vikr…" on a 1080px phone,
+        // and the greeting row is existing design that must not change.
+        appBarActions = if (coins != null && isEnabled(FeatureFlag.CoinWallet)) {
+            {
+                val wallet by coins.repo.wallet.collectAsState()
+                CoinChip(wallet, onClick = coins.openWallet)
+            }
+        } else null,
         sticky = {
             Column(Modifier.padding(horizontal = 20.dp)) {
                 GreetingRow(

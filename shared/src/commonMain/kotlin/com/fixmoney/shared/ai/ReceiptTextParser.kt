@@ -1,5 +1,9 @@
 package com.fixmoney.shared.ai
 
+import com.fixmoney.shared.coins.AiBlockedException
+import com.fixmoney.shared.coins.AiFeature
+import com.fixmoney.shared.coins.AiGate
+import com.fixmoney.shared.coins.WalletRepository
 import com.fixmoney.shared.platform.httpClient
 import com.fixmoney.shared.platform.logWarn
 import com.fixmoney.shared.receipt.ExtractedReceipt
@@ -58,7 +62,14 @@ object ReceiptTextParser {
         }
     }
 
-    suspend fun parse(rawText: String, categoryNames: List<String>): ExtractedReceipt? {
+    /** Throws [AiBlockedException] when the coin layer refused the call - nothing was charged. */
+    suspend fun parse(
+        rawText: String,
+        categoryNames: List<String>,
+        wallet: WalletRepository? = null
+    ): ExtractedReceipt? {
+        wallet?.precheck(AiFeature.Scan)?.let { if (it != AiGate.Passed) throw AiBlockedException(it) }
+        val ticket = wallet?.ticket(AiFeature.Scan)
         // Groq's json_object mode (unlike Gemini's Schema.enumeration) can't enforce
         // that "category" is exactly one of the app's real category names - a free-text
         // field here would let the model paraphrase or invent a name that then silently
@@ -102,6 +113,7 @@ object ReceiptTextParser {
                 "OCR TEXT:\n$rawText"
 
         val response: HttpResponse = client.post(AiProxy.CHAT_URL) {
+            ticket?.applyTo(this)
             contentType(ContentType.Application.Json)
             setBody(
                 ReceiptGroqRequest(
@@ -114,6 +126,8 @@ object ReceiptTextParser {
         }
 
         val bodyText = response.bodyAsText()
+        val gate = wallet?.absorb(ticket, response) ?: AiGate.Passed
+        if (gate != AiGate.Passed) throw AiBlockedException(gate)
         if (!response.status.isSuccess() || bodyText.isBlank()) {
             logWarn(TAG, "Groq call failed: ${response.status.value} $bodyText")
             return null

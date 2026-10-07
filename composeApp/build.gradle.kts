@@ -53,6 +53,14 @@ kotlin {
             implementation(libs.androidx.camera.view)
             implementation(project.dependencies.platform(libs.koin.bom))
             implementation(libs.koin.android)
+            // AI coins: rewarded videos are how coins are earned.
+            implementation(libs.play.services.ads)
+            implementation(libs.user.messaging.platform)
+            // See libs.versions.toml: keeps CameraX's ListenableFuture visible
+            // once play-services-ads has stubbed it out.
+            implementation(libs.guava)
+            // Fixoo Premium subscription - see libs.versions.toml.
+            implementation(libs.play.billing)
         }
     }
 }
@@ -78,6 +86,10 @@ android {
 
     sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
     sourceSets["main"].res.srcDirs("src/androidMain/res")
+    // Debug-only overlay: cleartext to a local `wrangler dev` Worker over
+    // `adb reverse`. See src/androidDebug/AndroidManifest.xml.
+    sourceSets["debug"].manifest.srcFile("src/androidDebug/AndroidManifest.xml")
+    sourceSets["debug"].res.srcDirs("src/androidDebug/res")
 
     signingConfigs {
         create("release") {
@@ -99,9 +111,10 @@ android {
         // Play has versionCode 10 (1.4.1) live. 11 was uploaded to a draft
         // release and then superseded when the foreground service moved from
         // `specialUse` to `microphone`; Play will not take a version code twice,
-        // even from a discarded draft.
-        versionCode = 12
-        versionName = "2.0"
+        // even from a discarded draft. 12 is on Play too (installed from Play
+        // 2026-10-06); 13 adds Fixoo Coins, real rewarded ads and Premium.
+        versionCode = 13
+        versionName = "2.1"
     }
 
     buildTypes {

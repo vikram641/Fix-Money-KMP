@@ -1,5 +1,7 @@
 package com.fixmoney.shared.receipt
 
+import com.fixmoney.shared.coins.AiBlockedException
+import com.fixmoney.shared.coins.WalletRepository
 import com.fixmoney.shared.ai.ReceiptTextParser
 import com.fixmoney.shared.data.CategoryRepository
 import com.fixmoney.shared.platform.logWarn
@@ -26,9 +28,11 @@ private const val TAG = "ReceiptScanEngine"
  * broke category autofill; asking the repository here cannot get out of sync.
  */
 class ReceiptScanEngine(
-    private val categories: CategoryRepository
+    private val categories: CategoryRepository,
+    private val wallet: WalletRepository
 ) {
 
+    /** Throws [AiBlockedException] when AI coins refused the scan - nothing was charged. */
     suspend fun scan(imageBytes: ByteArray): ExtractedReceipt? {
         val rawText = try {
             recognizeReceiptText(imageBytes)
@@ -50,7 +54,9 @@ class ReceiptScanEngine(
         }
 
         return try {
-            ReceiptTextParser.parse(rawText, categoryNames)
+            ReceiptTextParser.parse(rawText, categoryNames, wallet)
+        } catch (e: AiBlockedException) {
+            throw e
         } catch (e: Exception) {
             logWarn(TAG, "parse failed: ${e.message}")
             null

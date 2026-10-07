@@ -1,5 +1,6 @@
 package com.fixmoney.shared.ai
 
+import com.fixmoney.shared.coins.WalletRepository
 import com.fixmoney.shared.db.ExpenseDao
 import com.fixmoney.shared.onboarding.OnboardingPrefs
 
@@ -12,7 +13,8 @@ import com.fixmoney.shared.onboarding.OnboardingPrefs
  */
 class ChatEngine(
     private val expenses: ExpenseDao,
-    private val prefs: OnboardingPrefs
+    private val prefs: OnboardingPrefs,
+    private val wallet: WalletRepository
 ) {
 
     suspend fun ask(question: String, history: List<Pair<String, String>>): ChatAskResult {
@@ -37,6 +39,6 @@ class ChatEngine(
         }
 
         val historyText = history.joinToString("\n") { (q, a) -> "Q: $q\nA: $a" }
-        return GroqChatAssistant.ask(question, summary, historyText)
+        return GroqChatAssistant.ask(question, summary, historyText, wallet)
     }
 }

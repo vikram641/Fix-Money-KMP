@@ -31,6 +31,9 @@ import com.fixmoney.MainActivity
 import com.fixmoney.R
 import com.fixmoney.shared.onboarding.AppPrefs
 import com.fixmoney.shared.model.CurrencyConstants
+import com.fixmoney.shared.coins.AiGate
+import com.fixmoney.shared.coins.shortMessage
+import com.fixmoney.ui.LaunchTarget
 import com.fixmoney.shared.voice.VoiceAddResult
 import com.fixmoney.shared.voice.VoiceQuickAddEngine
 import kotlinx.coroutines.CoroutineScope
@@ -644,6 +647,26 @@ class FloatingBubbleService : Service(), KoinComponent {
                         "Couldn't add that: ${result.reason}",
                         long = true
                     )
+                    is VoiceAddResult.Blocked -> {
+                        toast(result.gate.shortMessage(), long = true)
+                        // Open the app on the sheet that offers the way on - a
+                        // video, or Fixoo Premium - rather than only saying so.
+                        // Allowed from the background: this app holds "display
+                        // over other apps". Busy and Premium's own cap have
+                        // nothing to offer, so those stay a toast.
+                        val target = when (result.gate) {
+                            AiGate.NoCoins -> LaunchTarget.OUT_OF_COINS
+                            AiGate.TrialLimit -> LaunchTarget.TRIAL_LIMIT
+                            else -> null
+                        }
+                        if (target != null) {
+                            startActivity(
+                                Intent(this@FloatingBubbleService, MainActivity::class.java)
+                                    .putExtra(LaunchTarget.EXTRA, target)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
+                    }
                 }
             } finally {
                 isBusy = false

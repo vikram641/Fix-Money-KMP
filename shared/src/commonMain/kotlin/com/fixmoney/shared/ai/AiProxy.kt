@@ -22,5 +22,38 @@ package com.fixmoney.shared.ai
  * used to post to Groq post the same shape here.
  */
 internal object AiProxy {
-    const val CHAT_URL = "https://fixmoney-ai-proxy.vikram8575229.workers.dev/v1/chat"
+    const val DEFAULT_BASE_URL = "https://fixmoney-ai-proxy.vikram8575229.workers.dev"
+
+    /** Set only by debug builds, via [AiEndpoint.useDebugWorker]. */
+    internal var baseOverride: String? = null
+
+    private val base: String get() = baseOverride ?: DEFAULT_BASE_URL
+
+    val CHAT_URL: String get() = "$base/v1/chat"
+
+    // AI coins - see worker/README.md. A Worker that predates coins answers 404
+    // here, which WalletRepository treats as "no wallet" and the app carries on
+    // on the old uncharged path.
+    val REGISTER_URL: String get() = "$base/v1/register"
+    val WALLET_URL: String get() = "$base/v1/wallet"
+    val SPEND_URL: String get() = "$base/v1/spend"
+    val PREMIUM_VERIFY_URL: String get() = "$base/v1/premium/verify"
+}
+
+/**
+ * Points the app at a different Worker - **debug builds only**, to test against
+ * `wrangler dev` on the developer's machine (`adb reverse tcp:8787 tcp:8787`,
+ * then launch with `--es worker_url http://127.0.0.1:8787`). The Android entry
+ * point refuses to call this unless the build is debuggable, so a release build
+ * always talks to the real Worker.
+ */
+object AiEndpoint {
+    fun useDebugWorker(url: String?) {
+        AiProxy.baseOverride = url?.trimEnd('/')?.takeIf { it.isNotBlank() }
+    }
+
+    val current: String get() = AiProxy.baseOverride ?: AiProxy.DEFAULT_BASE_URL
+
+    /** The production Worker. */
+    const val DEFAULT: String = AiProxy.DEFAULT_BASE_URL
 }

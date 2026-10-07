@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -34,6 +35,18 @@ import com.fixmoney.ui.expense.AddExpenseScreen
 import com.fixmoney.ui.home.DashboardScreen
 import com.fixmoney.ui.scanner.ReceiptScannerScreen
 import com.fixmoney.ui.onboarding.*
+import com.fixmoney.shared.coins.AiFeature
+import com.fixmoney.shared.coins.WalletEvent
+import com.fixmoney.shared.coins.WalletRepository
+import com.fixmoney.ui.coins.CoinSheet
+import com.fixmoney.ui.coins.CoinSheetHost
+import com.fixmoney.ui.coins.CoinsController
+import com.fixmoney.ui.coins.LocalCoins
+import com.fixmoney.ui.coins.WalletScreen
+import com.fixmoney.ui.coins.rememberRewardedAdLauncher
+import com.fixmoney.ui.coins.rememberPremiumStore
+import com.fixmoney.ui.coins.confirmPremium
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
@@ -107,6 +120,58 @@ fun App() {
             val skipToSetup: () -> Unit = { navController.navigate(Routes.SETUP_NAME) { launchSingleTop = true } }
             val goBack: () -> Unit = { navController.popBackStack() }
 
+            // AI coins. One controller for the whole app so any screen refused
+            // for coins can raise the sheet; the balance itself always comes
+            // from the Worker via WalletRepository.
+            val walletRepo: WalletRepository = koinInject()
+            val adLauncher = rememberRewardedAdLauncher()
+            val coins = remember { CoinsController(walletRepo, scope) }
+            coins.ads = adLauncher
+            // Fixoo Premium via Google Play. Any subscription Play still reports
+            // (reinstall, new phone, a confirmation that never arrived) is
+            // re-sent to the Worker quietly on launch.
+            val premiumStore = rememberPremiumStore { token ->
+                scope.launch { coins.confirmPremium(token, showSheet = false) }
+            }
+            coins.store = premiumStore
+            coins.openWallet = { navController.navigate(Routes.WALLET) { launchSingleTop = true } }
+            // Collector first: the events flow does not replay, so a bonus
+            // granted by the refresh below must find someone listening.
+            LaunchedEffect(Unit) {
+                walletRepo.events.collect { event ->
+                    when (event) {
+                        is WalletEvent.WelcomeBonus -> coins.sheet = CoinSheet.TrialEnded(event.coins)
+                    }
+                }
+            }
+            // A screen or sheet asked for from outside (the voice bubble).
+            // Waits until the user is past splash and onboarding, where none
+            // of these would make sense, then acts once. The sheets come up
+            // over whatever screen is showing.
+            val launchTarget by LaunchTarget.pending.collectAsState()
+            LaunchedEffect(launchTarget) {
+                if (launchTarget == null) return@LaunchedEffect
+                navController.currentBackStackEntryFlow.first { it.destination.route != Routes.SPLASH }
+                if (prefs.isOnboardingComplete()) {
+                    when (launchTarget) {
+                        LaunchTarget.WALLET -> navController.navigate(Routes.WALLET) { launchSingleTop = true }
+                        LaunchTarget.OUT_OF_COINS -> {
+                            coins.sheet = CoinSheet.OutOfCoins
+                            walletRepo.refresh()
+                        }
+                        LaunchTarget.TRIAL_LIMIT -> coins.sheet = CoinSheet.TrialLimit
+                    }
+                }
+                LaunchTarget.consume()
+            }
+            LaunchedEffect(Unit) {
+                // Registers on first launch and picks up the trial / welcome
+                // bonus. Silent offline - every AI feature still works on the
+                // old path until the Worker can be reached.
+                walletRepo.refresh()
+            }
+
+            CompositionLocalProvider(LocalCoins provides coins) {
             NavHost(
                 navController = navController,
                 startDestination = Routes.SPLASH,
@@ -256,7 +321,7 @@ fun App() {
                 composable(Routes.ADD_EXPENSE) {
                     AddExpenseScreen(
                         onClose = goBack,
-                        onScanReceipt = { navController.navigate(Routes.SCAN_RECEIPT) },
+                        onScanReceipt = { coins.proceedIf(AiFeature.Scan) { navController.navigate(Routes.SCAN_RECEIPT) } },
                         scanned = pendingScan,
                         onScanConsumed = { pendingScan = null },
                         editingId = editingExpenseId
@@ -271,6 +336,11 @@ fun App() {
                         }
                     )
                 }
+                composable(Routes.WALLET) {
+                    WalletScreen(onBack = goBack)
+                }
+            }
+            CoinSheetHost(coins)
             }
             }
         }

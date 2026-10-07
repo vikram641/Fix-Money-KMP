@@ -64,6 +64,8 @@ The rebuild must land as an **update to the existing listing**, not a new app. T
 - **Signing**: `keystore.properties` in the repo root (gitignored, copy from `~/Downloads/Expense/keystore.properties`) points at `/Users/apple/keystores/expense-release.jks`. Play rejects an update signed with any other key. **Verified 2026-09-27**: the release APK's cert SHA-256 `8E:62:87:9F:6C:48:8F:F8:C4:E9:FD:76:67:A0:D4:F0:FB:E8:A0:F4:F9:6F:BE:EB:47:33:7A:3C:88:F3:F7:17` matches that keystore exactly.
 - `versionCode = 11` — Play has 10 (1.4.1) live, so uploads must be higher. Bump before every release.
 
+**Play App Signing is on.** Builds users get from Play are re-signed by Google (seen 2026-10-07 on the OnePlus: the Play-installed v12 carried certificate `d9169e77...` / v3.2 `f6729a82...`, not the upload key `8E:62:...`). So a locally built release APK **cannot be installed over a Play install** - `adb install -r` would fail on the signature - and the only way is to uninstall first, which wipes that install's local data (release builds are not debuggable, and `adb backup` is off for targetSdk 31+, so there is no backup). The user chose that on 2026-10-07 and uninstalled both apps themselves. Also learned: **versionCode 12 is already on Play** (installed from Play on 2026-10-06), so the next upload must be 13+.
+
 Without `keystore.properties` present, release builds come out unsigned and the Gradle config silently skips signing (the `if (keystoreProperties.containsKey("storeFile"))` guard) — it won't error, so check the APK's signature, don't assume.
 
 ## Gotchas that already cost a build cycle
@@ -1507,6 +1509,144 @@ creates `Documents/fixmoney.db`, then `sqlite3` rows straight in.
 - **Settings' preference stores do not match the old app's** - see "Known preference-store mismatch" above.
 - **Changing the budget still does not rewrite the budget rows.** Onboarding writes them, and Home now reads them, so the two agree - but there is no way to edit the overall monthly figure after onboarding except per-category on the Budget screen.
 - **An install that onboarded before 2026-10-03 has no budget rows** and still opens Budget empty. There is no backfill; "+ Set Budget" is the way out.
+
+## AI coins - built on `feat/ai-coins-wallet`, run on a device against the old Worker only (2026-10-07)
+
+Branch `feat/ai-coins-wallet` was cut from `feat/premium-subscription` (2 commits ahead of `main`: the legacy-DB import and the microphone foreground-service fix). Design PDF + Stitch prompts: `docs/FixMoney_Analytics_Siri_Coins_System_Design.pdf`, `docs/Coin_Wallet_Stitch_Prompts.md`.
+
+**User-facing name is "Fixoo Coins"** (renamed from "AI Coins" at the user's request); code identifiers still say coins/wallet.
+
+**Coin config is live from Firestore** (user's request: change the trial length etc. without a deploy). The front Worker reads document `coin_config/app` (fields `trial_days`, `trial_daily_cap`, `reward_per_ad`, `daily_ad_cap`, `welcome_bonus`, `cost_fixoo`, `cost_voice`, `cost_scan`, `cost_insight`) over REST, caches it 5 minutes, clamps typos to sane maxima, and passes it into every wallet call; `wrangler.jsonc` vars are only the defaults. **The trial end is derived from `createdAt` + the live `trial_days`**, so a change applies to existing users too. **Live since 2026-10-07**: the rule `match /coin_config/{doc} { allow read: if true; allow write: if false; }` is published (added through the Firebase Rules REST API with the `gcloud` token of gomechg@gmail.com - the existing `categories` / `feature_flags` rules were read first and kept verbatim) and `coin_config/app` exists with all ten fields as int64 at the `wrangler.jsonc` defaults. So a value changed in the console now applies to production within 5 minutes - **and to any local `wrangler dev` too, unless `.dev.vars` sets `FIREBASE_PROJECT_ID=` (empty)**: without that line the production `trial_days: 5` beats `TRIAL_DAYS=0` and the paid tests silently run in trial. The repo's `.dev.vars` has the line.
+
+Rules: tracking is free; Fixoo chat, voice quick-add and receipt scan cost 1 coin each; 5-day free trial (30 AI uses/day cap); a rewarded video gives 5 coins, max 10 videos/day; 10-coin welcome bonus when the trial ends; the Home insight is free (it is local arithmetic, no AI call). **All of these are `vars` in `worker/wrangler.jsonc`**, not code - the open product decisions in the design PDF's section 12 only need a var change.
+
+**No login and no Firebase Auth - the user's explicit decision.** Do not add a sign-in step.
+
+### Production Worker - deployed 2026-10-07 (user's call: "jitna kaam ho chuka hai wo deploy kar do")
+
+- `fixmoney-ai-proxy`, version `916f899e-1260-4232-a760-2425b0cf205b`, at `https://fixmoney-ai-proxy.vikram8575229.workers.dev`. Durable Object migration `v1` (WalletDO, DeviceDO) applied.
+- Secrets: `GROQ_API_KEY` (from before) and `TOKEN_SECRET` (random, set by Claude, **not recorded anywhere** - rotating it only makes devices re-register by device key; wallets survive). **Not yet set:** `PLAY_SERVICE_ACCOUNT` - premium verify answers 502 `PLAY_UNAVAILABLE` until it is.
+- `DEV_MODE` is **not** set in production, and the smoke test proved both test bypasses are closed there: a `dev-premium-*` token went to Play (502) instead of being accepted, and an SSV callback with `key_id=test` got "unknown key_id".
+- Smoke test passed: unknown route 404, wallet without token 401, register 200 (trial 5 days - Firestore `coin_config` still 403, defaults apply), wallet with token 200, **legacy token-less chat 200** (older builds unaffected; `REQUIRE_AUTH` stays "false"). One junk account was created by the smoke test (`deviceKey` "smoke-test-claude-2026-10-07").
+- **Seeing the data:** Cloudflare dashboard -> Durable Objects -> `fixmoney-ai-proxy_WalletDO` -> **Data Studio**, then enter an **account id** (the object name; the app keeps it in `prefs_onboarding` as `coin_account_id`). The wallet is stored with the KV API (key `s`), which Data Studio shows read-only. There is **no "list all wallets"** - one object per user is the design; totals would need a separate store (e.g. Workers Analytics Engine) if wanted. Per-event history is in **Workers Logs** (observability is on): search `[coins]`.
+- **Still pending before relying on it** (all need the user's consoles): real rewarded ad unit + SSV pointed at `/v1/admob/ssv` (then its id in `REAL_REWARDED_UNIT` and `REWARDED_AD_UNITS`); Play Console subscription + `PLAY_SERVICE_ACCOUNT` + a real test purchase; then flip `REQUIRE_AUTH` to "true" once every shipped build registers. Done 2026-10-07: Firestore `coin_config`, per-IP new-account limit, proactive gate - see "Coin pending work, second pass" below.
+
+### Worker (`worker/src/`) - routes, status codes, deploy and test recipe in `worker/README.md`
+
+- Identity: `/v1/register` takes a device key and returns an HMAC-signed device token. The account is found by **token first** (so a backup-restored phone keeps its wallet), device key second (so a reinstall keeps wallet *and* trial).
+- **One Durable Object per wallet** (`WalletDO`), plus a `DeviceDO` per phone. Not D1: a D1 database runs one query at a time and answers "overloaded" under a launch-sized burst; Durable Objects give per-user serialisation with no shared queue. SQLite-backed, the only kind the free plan allows.
+- **Reserve -> commit**: a coin is held before the model call and taken only if the model answered. Busy/failed calls cost nothing; there is no refund path to get wrong.
+- Coins are created **only** by `GET /v1/admob/ssv`, AdMob's ECDSA-signed server callback. The app never reports a reward.
+- Token-less requests still take the old uncharged path while `REQUIRE_AUTH` is `"false"`, so nothing breaks before every build registers.
+- Verified locally with `wrangler dev` + mock Groq + a local SSV key: 11 trial checks, 16 paid checks, and 5 parallel calls on the last coin -> exactly one 200; re-run after `dailyAdCap` was added to the wallet view (all pass). `test/e2e.py` finds `ssvkeys.mjs` next to itself - an earlier version looked in the scratch dir and broke the README recipe. **Deployed to production 2026-10-07 - see "Production Worker" below.** Gotchas that cost a cycle: Workers AI is always *remote* under `wrangler dev`, so a mocked Groq 429 gets a real answer unless `DEV_NO_FALLBACK=true`; and a `.dev.vars` with `GROQ_URL` silently points local runs at the mock.
+
+### App
+
+- `shared/coins/WalletRepository` - registration, cached balance (`StateFlow`, persisted so the chip shows a number offline), `ticket()` for each AI call, `absorb()` to read the coin outcome and the `X-Coins*` headers off every AI response, `awaitReward()` to poll after a video. **If registration fails (offline, or the currently deployed pre-coins Worker answering 404) every AI call goes out without a token and works exactly as before** - that is deliberate, and it is why the app is safe to run against the old Worker.
+- The three AI callers (`GroqChatAssistant`, `VoiceExpenseParser`, `ReceiptTextParser`) take the wallet; refusals surface as `ChatAskResult.NoCoins/TrialLimit/Busy`, `VoiceAddResult.Blocked`, and `AiBlockedException` from the scanner. `AiGate.shortMessage()` is the one-line text for toasts, Siri and the scanner hint; every one says nothing was charged.
+- Device key: Android = SHA-256 of `ANDROID_ID` (`AndroidDeviceKeySource`); iOS = Keychain UUID (`IosDeviceKeySource`, falls back to NSUserDefaults if the Keychain refuses, e.g. unsigned simulator builds). The token lives in the `prefs_onboarding` Settings file, which Android Auto Backup carries to a new phone.
+- UI (`composeApp/.../ui/coins/`): `CoinsController` + `LocalCoins` (one per app, raises sheets from any screen), `CoinChip` in Home's **app bar** between the bell and the avatar (via a new optional `actions` slot on `DesignAppBar` / `appBarActions` on `CollapsingScreen`), an "AI Coins" row at the top of Settings' AI section, `WalletScreen` (route `wallet`), and `CoinSheetHost` for out-of-coins / trial-limit / trial-ended / rewarded-video states. Flag `coin_wallet` hides the UI only; it does not stop charging.
+- **Existing screens were not restyled** - the user asked for that explicitly. Only the chip, the Settings row, and new chat/scanner messages were added.
+- Coin colour is the Stitch system's `tertiary` amber `#FFBA4B`, defined in `CoinVisuals.kt`, not in the theme.
+- Mockups: `~/Downloads/stitch_fixmoney_fintech_app_design 8/` - four of six `screen.png` are 28-byte placeholders, so those were read from `code.html`. **Most of their content was invented and was not ported**: daily quests, streaks, referrals, a ₹799/yr plan, coins for exports, 5-15 coin prices, a 14-day trial, "Queue #248", "Latency 840ms", "Credited Instantly". Do not "restore" any of it.
+
+**Why the chip is not where the Stitch mockup put it:** in the greeting row it squeezed "Good Morning, Vikram" to "Vikr…" on the 1080px OnePlus - a change to existing, approved UI. The app bar has free space and leaves the greeting untouched.
+
+### Verified on the OnePlus Nord (Android 12), 2026-10-07 - against the *old* deployed Worker
+
+- Debug APK installed over the existing `.kmp` build (data kept); no crash.
+- `register failed: 404` in logcat as expected, and **Fixoo still answered** ("Top expenses" -> bars) on the token-less path - the fallback works.
+- Chip shows "–", Wallet shows "Couldn't reach FixMoney…" with the video button disabled, Settings shows the "AI Coins" row. Back from Wallet returns to Home.
+- The Google test rewarded ad **loaded** ("request sent from a test device"). UMP logged "no form(s) configured for the input app ID" - no GDPR message exists in the AdMob console yet; the app carries on, which is the intended behaviour, but configure one before any EEA/UK release.
+- Two "anomalies" in that session (Back from Wallet leaving the app; one tap opening the wrong screen, later a video starting on its own) were **the user tapping the phone at the same time** - not app bugs. When driving the device over adb, ask whether the user is also using it before concluding anything from an unexpected screen.
+
+### Testing coins on the device against a local Worker (verified 2026-10-07)
+
+No deploy needed. Debug builds only:
+
+```bash
+# worker/.dev.vars: GROQ_API_KEY (from local.properties), TOKEN_SECRET, DEV_MODE=true, SSV_TEST_KEY (node worker/test/ssvkeys.mjs <dir> gen)
+cd worker && npx wrangler dev --port 8787 --ip 127.0.0.1
+adb reverse tcp:8787 tcp:8787
+adb shell am start -n com.vikram641.expensetracker.kmp/com.fixmoney.MainActivity --es worker_url http://127.0.0.1:8787
+```
+
+`DebugWorker.kt` remembers the URL; to return to the real Worker run `adb shell "am start -n com.vikram641.expensetracker.kmp/com.fixmoney.MainActivity --es worker_url ''"` - the empty value must be quoted inside the device shell, or adb drops it and `am` fails with "Argument expected after worker_url" and refuses to act unless the build is debuggable; cleartext to 127.0.0.1/localhost is allowed only by `src/androidDebug/` (a debug-only manifest + network security config wired in `composeApp/build.gradle.kts`). **Checked with aapt2: the release APK has no `networkSecurityConfig`.**
+
+Since the debug ad unit sends no SSV, credit a watched video by hand: read `coin_account_id` with `adb shell run-as <pkg> cat shared_prefs/prefs_onboarding.xml`, sign with `node worker/test/ssvkeys.mjs <dir> sign <accountId> <txId>`, and `curl` the result to `/v1/admob/ssv`.
+
+Verified that way on the OnePlus: register -> 200 and chip "Trial · 5d"; test video played to "Reward granted"; the app polled `/v1/wallet`; a signed callback credited +5 and the wallet showed **5 coins, 1 of 10 watched**.
+
+Then, with `TRIAL_DAYS=0` and (test only) `COST_FIXOO=10` in `.dev.vars`: the existing wallet's trial ended on the next call and the 10-coin welcome bonus landed (trial end is derived live, as designed); "Reward unlocked! 20 -> 25, 3 of 10 watched" after a video + signed callback; two Fixoo questions logged `reserved` -> `charged` (25 -> 15 -> 5); the third logged `refused NO_COINS`, returned 402 and raised the out-of-coins sheet with nothing charged. Worker logs carry one `[coins] <event> {json}` line per register / reserved / charged / released / refused / ad_reward / trial_ended.
+
+**Trial-ended sheet always appears once**, even when `welcome_bonus` is 0: the Worker marks the moment the trial is first seen ended and sends `welcomeBonusGranted` (possibly 0) on that one response; the sheet hides its bonus row at 0. Before this it only appeared when a bonus was paid, so a 0 bonus meant the user was never told. Verified on device with a fresh wallet (`TRIAL_DAYS=0`, `WELCOME_BONUS=0`): sheet once, chip 0, not shown again after a relaunch, and Fixoo at 0 coins -> 402 + out-of-coins sheet.
+
+### Fixoo Premium - Rs 99/month Google Play subscription (built 2026-10-07; Worker side deployed, no Play product yet)
+
+The user asked for "Google Pay" payments. **Play policy requires Google Play Billing for digital subscriptions in a Play app** - a direct GPay/UPI link would get the app rejected - and Play's own checkout offers UPI / Google Pay / cards in India, so that is what is built. Do not add a direct payment link.
+
+- **What it does:** while premium is active the Worker charges no coins for any AI feature (`paidBy: "premium"` in the logs). Not "unlimited": `premium_daily_cap` (default 100/day, Firestore-configurable) protects the shared Groq quota, and the copy says "fair use", never "unlimited" or "ad-free".
+- **App** (`ui/coins/PremiumStore*.kt`): Play Billing **9.1.0** (plain Java artifact, so no Kotlin-metadata clash; v8+ is mandatory for updates from 31 Aug 2026). Product id `fixoo_premium_monthly` (must match worker `PREMIUM_PRODUCT_ID` and Play Console). The account id goes in as `obfuscatedAccountId`. The price shown is Play's localized `formattedPrice`, never hardcoded. On launch every owned subscription is re-sent to the Worker (restore after reinstall / new phone / lost confirmation). The app never acknowledges - the Worker does, after verifying.
+- **Worker** (`src/play.ts`, `POST /v1/premium/verify`): verifies with `purchases.subscriptionsv2.get` using a service-account JWT signed with Web Crypto (no Google SDK), checks state ACTIVE / IN_GRACE_PERIOD / CANCELED-but-unexpired for our product, stores Play's expiry in the wallet, then `purchases.subscriptions.acknowledge` (Google refunds anything unacknowledged for 3 days). Renewals/cancellations are noticed by re-verifying on `/v1/wallet` once the stored expiry passes - no Pub/Sub RTDN yet.
+- **Billing 9 gotcha that cost three build cycles:** with `enableAutoServiceReconnection()` the client reports `isReady == true` before `startConnection()` was ever called, so an `if (isReady) return` guard silently skipped connecting - no product, no restore, no error. Guard with our own `started` flag.
+- **Debug builds simulate the purchase** (`PremiumStore.simulated`): the `.kmp` package is not in Play Console, so the product never loads; a debug build pointed at a **local** Worker then offers "Subscribe (test purchase)" which sends a `dev-premium-*` token that **only a DEV_MODE Worker** accepts (against the production Worker the card says "coming soon" instead, since prod would reject the token). Release builds and the real Worker cannot be fooled by it.
+- **Verified on the OnePlus against the local Worker:** card "Rs 99 / month" -> test purchase -> `premium_verify active` -> "Welcome to Fixoo Premium", chip "Premium", Wallet "ACTIVE · Renews on November 6, 2026 · Manage subscription", coin earning hidden; then Fixoo at **0 coins answered** with nothing charged. Worker e2e has 4 premium checks (20/20 in paid mode).
+- **Not verified - needs the user's Play Console work:** a real Play purchase, real verification/acknowledgement, renewal. Steps are in `worker/README.md` ("Fixoo Premium"). A real purchase can only be tested on a build installed from a Play testing track (license tester), never on the `.kmp` debug build.
+- iOS: `available = false` (StoreKit needs the Apple account); the card says "coming soon" there.
+- The earlier "coming soon only" premium card is gone; `premium_plan` flag still hides all premium UI.
+
+**A 401 on wallet refresh re-registers immediately** (once) instead of just dropping the token - verified when the local Worker's data was wiped: `GET /v1/wallet 401` -> `register via device` -> `200`.
+
+`worker/test/e2e.py` takes `FIXMONEY_WORKER=http://127.0.0.1:8788` so the suite can run on a second `wrangler dev` (with `--persist-to` and `--var` overrides) while the device's Worker keeps 8787.
+
+**Fixed on device: two MainActivity instances.** Launching from the launcher while a task started by `am start` was running stacked a second MainActivity (seen in `dumpsys activity activities` as Hist #1 and #0), so Back surfaced the hidden instance's screen or left the app. `android:launchMode="singleTask"` + `onNewIntent` fixed it; re-checked with the same sequence - one instance, Back from Wallet returns to Home.
+
+### Rewarded ads (Android only)
+
+- play-services-ads 23.6.0 + UMP 3.1.0 (old app's versions); AdMob App ID in the manifest is the old app's. **Adding play-services-ads broke CameraX's compile** (`Cannot access class 'ListenableFuture'`): it pins `listenablefuture` to the empty `9999.0` stub that assumes Guava is present. Fixed by declaring `guava` in `composeApp` androidMain.
+- **Debug builds always use Google's test rewarded unit** - the old app saw the OnePlus Nord's test-device hash change between sessions and a real ad served to the developer's phone (invalid traffic risks the AdMob account). Consequence: in debug the video plays but **no coins arrive** (the test unit has no SSV callback). Test crediting server-side.
+- `REAL_REWARDED_UNIT` in `RewardedAds.android.kt` is **empty** until the unit is created in AdMob (with SSV pointed at the Worker); until then release builds report videos unsupported rather than serve test ads.
+- iOS: `supported = false` - needs the Google Mobile Ads Swift package, an iOS AdMob app and an ATT decision, all blocked on the Apple account. iOS users after the trial therefore cannot earn coins yet.
+
+### Coin pending work, second pass (2026-10-07)
+
+Built and checked (`checkAll` green, Worker e2e trial + paid all PASS, new unit tests PASS). **Not run on a device** yet. **Worker deployed 2026-10-07 as version `54422fa4-9ebc-4667-bcd6-8fddd83f84d5`** (migration v2 / `IpGateDO`, SSV decode fix, `REWARDED_AD_UNITS`); prod smoke test: 404 / wallet 401 / register 200 / wallet 200 / legacy chat 200 / premium verify 502 `PLAY_UNAVAILABLE` (no service account yet, expected) / bad SSV rejected. Roll back to `916f899e` from the dashboard if needed.
+
+- **Per-IP limit on new wallets** (`worker/src/ipgate.ts`, `IpGateDO`, migration `v2`). One Durable Object per `<network>:<UTC day>`; IPv6 counted per /64 after expanding `::`. Only creating a wallet counts - checked with `DeviceDO.accountId()` *before* `claim()`, so a known device or a valid token never touches it. Over the limit `/v1/register` answers `429 IP_LIMIT` and the app carries on token-less (the existing register-failure path). `NEW_ACCOUNTS_PER_IP` default **20** - loose because of carrier CGNAT; `"0"` disables. Not KV: KV is eventually consistent and its 1,000 free writes/day would be the real cap. Verified locally with `--var NEW_ACCOUNTS_PER_IP:3`: three new devices 200, the fourth 429, the first device again 200.
+- **Proactive gate** - `WalletRepository.precheck(feature)`. Says no **only for lack of coins**, and only after a fresh `refresh()` confirms it (a cached 0 can be behind a reward that landed server-side); offline or unregistered it says yes and the Worker decides. Trial / Premium daily caps are deliberately not prechecked - their counters reset at midnight, so a cached count is usually stale. Used in two places: inside all three AI callers before `ticket()` (saves the round trip and the DATA-summary build) and, through `CoinsController.proceedIf`, **before the receipt camera opens** - the out-of-coins sheet comes up instead of after the user has framed a receipt. Voice is *not* gated before listening, because the local parser below makes simple phrases free even at 0 coins.
+- **Local voice parsing** (`shared/voice/LocalVoiceParser.kt`, unit-tested in `shared/src/commonTest` - the project's first tests; run `./gradlew :shared:testDebugUnitTest`). One number + words that name a category (real names first, then a keyword list incl. Hinglish: chai, sabzi, auto, dawai...) is saved with **no AI call and no coin**. No number in any form -> `NoAmount` locally, which used to cost a coin for the model to say 0. Anything else -> the model as before: two numbers, decimals, number words ("one fifty", "do sau"), "and"/"split"/"yesterday", two categories, more than 4 words. A keyword maps only to a category that exists by that name. Bias is deliberate: a wrong local guess is a wrong ledger row, a needless model call is one coin.
+- **Bubble opens the app on the out-of-coins sheet** (video +5 and "Or get Fixoo Premium") when refused for coins, and on the trial-limit sheet for `TRIAL_LIMIT` (`MainActivity` extra `open=out_of_coins` / `open=trial_limit`, `LaunchTarget`, common code). First built as "open the wallet"; the user asked for the subscription/earn options instead, so the sheet comes up over the current screen. Busy and Premium's own cap stay a toast. Every refusal sheet (incl. no-videos-left, videos unsupported, trial limit) now offers Premium when Play can sell it. Starting an activity from the background is allowed because the app holds "display over other apps". `App` waits until the route is past splash and onboarding is complete, navigates once and clears it; a restored activity (`savedInstanceState != null`) does not replay it.
+- **Recent activity on the Wallet screen** - a local list (`coin_activity` in `prefs_onboarding`, newest 30, 10 shown) built from balance changes the app sees in `publish()`: a drop on an AI answer is labelled with the feature, a rise is "Video reward" (nothing else creates coins) or "Welcome bonus" when `welcomeBonusGranted` rides along, and a rise seen on an AI answer's headers is "Coins added" (headers cannot say which). Trial uses cost nothing and do not appear - the empty state says so. It is this phone's record, not an audit.
+
+### Real rewarded unit + an SSV signature bug (2026-10-07)
+
+- AdMob unit **"Fixoo Coins Rewarded"** = `ca-app-pub-7178541936408370/8131398118` (created through Chrome), reward 5 **`FixooCoins`**, SSV callback `https://fixmoney-ai-proxy.vikram8575229.workers.dev/v1/admob/ssv` verified in the console. Wired into `REAL_REWARDED_UNIT` (release builds only; debug still uses Google's test unit) and `REWARDED_AD_UNITS: "8131398118"`.
+- **Bug found by the console's "Verify URL": Google signs the URL-*decoded* query** (its verifier uses `java.net.URI.getQuery()`), and `ssv.ts` checked the raw one. With reward item "Fixoo Coins" the ping arrived as `reward_item=Fixoo%20Coins` and failed with `bad signature` -> 400 (seen in `wrangler tail`; tail redacts the `signature` param). `ssv.ts` now verifies the decoded content and falls back to the raw one; tested locally by signing decoded content and sending it encoded (accepted) plus a tampered amount (rejected), and both e2e suites still pass. The fix was deployed in `54422fa4`; the reward item had already been set to `FixooCoins` (no space) - with nothing to decode, the production Worker verifies it. Keep the item free of characters that need encoding until the fix is live.
+
+### Play setup for the first real purchase (2026-10-07, in progress)
+
+- `versionCode` 13 / `versionName` 2.1; signed AAB `composeApp/build/outputs/bundle/release/composeApp-release.aab` (~40 MB), cert SHA-256 `8E:62:...:F7:17` = upload key, real rewarded unit in the dex. Too big for the Chrome tool's 10 MB upload limit - the user uploads it by hand.
+- Play Console (developer `vikram8785`, account 7662596088003090473, app id 4974371973808517048): new email list **"Owner internal"** = vikram8575229@gmail.com + swanijai742@gmail.com (added at the user's request), selected as the **only** internal-testing tester list and as the **licence testers** (purchases by it are not charged). The other `tester*` lists belong to closed-testing people and were left alone.
+- Google Cloud `expenseapp-7b500`: service account **`fixmoney-play-verify@expenseapp-7b500.iam.gserviceaccount.com`** created. **Not done (blocked for Claude, the user's to do):** accept the Google Play Android Developer API terms + enable it (`UREQ_TOS_NOT_ACCEPTED`), create its JSON key and `wrangler secret put PLAY_SERVICE_ACCOUNT`, invite it in Play Console Users and permissions, upload the AAB to internal testing, create `fixoo_premium_monthly`.
+
+- **Internal testing release 13 (2.1) published 2026-10-07** ("Available to internal testers", opt-in link https://play.google.com/apps/internaltest/4701503854424410968). Release notes mention Coins, free simple voice add and Premium.
+- `PLAY_SERVICE_ACCOUNT` secret set by the user (key created with gcloud, local copy deleted); API enabled and the SA invited by the user. First probe from the Worker: `subscriptionsv2 401 permissionDenied` - auth works, Play permission not yet propagated (can take up to 24h).
+- **Premium is live in Play (2026-10-07):** merchant profile set up by the user (existing "Vikram Singh" payments profile, support email + statement name `FIXMONEY`); subscription `fixoo_premium_monthly` "Fixoo Premium", base plan **`monthly`**, auto-renewing, 7-day grace, **Active**, 175 countries priced from INR 99 by Play's conversion, **India set back to exactly INR 99** (Play charms 99 to 100 on bulk set - fix per country with the pencil). Worker probe after that: `subscriptionsv2 400 Invalid Value` for a fake token = **permission works**. Note: the Worker maps any Play error (incl. this 400 for a bad token) to 502 `PLAY_UNAVAILABLE`.
+- **Production: 13 (2.1) sent for review at 100% full rollout on 2026-10-08 ~00:30 IST** (promoted from internal testing; 0 devices dropped; release notes carried over). Blocker fixed on the way: "Incomplete advertising ID declaration" - the AAB carries `com.google.android.gms.permission.AD_ID` (AdMob); the user declared Yes / Advertising or marketing. Google says reviews take up to 7 days. Also live: internal app sharing link for 2.1 (expires 6 Dec), "Owner internal" now also has swanijai742@gmail.com. Worker at that point: `dc40d63e`.
+- (was) **Blocker for Premium: the developer account has no Google Payments merchant account**, so the Subscriptions page will not open ("Missing requirements... set up a merchant account"). The user must set it up (legal/bank/tax details - not something Claude enters); only then can `fixoo_premium_monthly` be created.
+
+### Known gaps
+
+- `TrialState` (`shared/premium/`, from `feat/premium-subscription`) is a separate client-side trial that nothing uses; the coin trial is the Worker's. Left untouched.
+- If the first response after the trial ends is an AI answer (not `/v1/wallet` or `/v1/register`), the welcome bonus arrives only as a header change, so the trial-ended sheet does not show and the history says "Coins added". The app refreshes the wallet on every launch, which normally gets there first.
+
+## Planned, not built: Analytics, Siri quick-add (designed 2026-10-06)
+
+Design doc: `docs/FixMoney_Analytics_Siri_Coins_System_Design.pdf` (Hinglish, the user's language). Its coin section predates the Durable Object / reserve-commit / no-login decisions above - where they differ, this file is current.
+
+- **Analytics**: native Firebase SDKs (Android BOM, iOS via SPM in Xcode) behind a common `AnalyticsSink` interface that lives in composeApp - Kotlin never links Firebase, so the iosX64/klib gate does not apply. The old app had `firebase-analytics` but **zero custom `logEvent` calls**; the taxonomy is new.
+- **Siri**: Apple requires the app name in every App Shortcut phrase and allows no free-text parameter inside one, so "just say 150 coffee" is impossible *through Siri*. The plan is shorter phrases plus a Back Tap / Action Button Shortcut (Dictate Text -> a new text intent), and a Settings toggle with a one-time in-app YouTube how-to. Siri capability / `requestSiriAuthorization` needs the paid Apple account.
+- The real free-tier ceiling is Groq: ~30 requests and ~8k tokens a minute, 1,000 a day for the whole org (third-party sources - check console.groq.com).
 
 ## Repo
 

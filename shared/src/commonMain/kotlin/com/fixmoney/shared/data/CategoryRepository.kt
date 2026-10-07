@@ -28,7 +28,8 @@ private const val TAG = "CategoryRepository"
  */
 class CategoryRepository(
     private val client: HttpClient,
-    private val settings: Settings
+    private val settings: Settings,
+    private val defaultCategory: List<Category> = DefaultCategories.ALL
 ) {
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -61,82 +62,85 @@ class CategoryRepository(
      * rather than returning nothing: the content is identical to what is seeded
      * in Firestore, so an offline first run shows chips instead of a blank row.
      */
-    suspend fun getCategories(): List<Category> {
-        cached?.let { return it }
-
-        readDisk(fresh = true)?.let {
-            cached = it
-            return it
-        }
-
-        repeat(3) { attempt ->
-            fetch()?.let { fetched ->
-                cached = fetched
-                writeDisk(fetched)
-                return fetched
-            }
-            if (attempt < 2) delay(1500)
-        }
-
-        // Offline or over quota: a stale copy of the real list still beats the
-        // seeded defaults, which carry no edit made in Firestore since.
-        readDisk(fresh = false)?.let {
-            logWarn(TAG, "Firestore unavailable, using the stale on-disk copy")
-            cached = it
-            return it
-        }
-
-        logWarn(TAG, "Firestore fetch failed after 3 attempts, using seeded defaults")
-        return DefaultCategories.ALL
+    fun getCategories(): List<Category> {
+        return defaultCategory
     }
-
-    private fun readDisk(fresh: Boolean): List<Category>? {
-        val raw = settings.getStringOrNull(DISK_KEY) ?: return null
-        if (fresh) {
-            val age = currentTimeMillis() - settings.getLong(DISK_AT, 0L)
-            // A clock moved backwards leaves a negative age; treat that as stale
-            // rather than trusting the copy forever.
-            if (age !in 0 until DISK_TTL_MILLIS) return null
-        }
-        return try {
-            json.decodeFromString<List<Category>>(raw).takeIf { it.isNotEmpty() }
-        } catch (e: Exception) {
-            logWarn(TAG, "discarding unreadable category cache: ${e.message}")
-            null
-        }
-    }
-
-    private fun writeDisk(value: List<Category>) {
-        try {
-            settings.putString(DISK_KEY, json.encodeToString(value))
-            settings.putLong(DISK_AT, currentTimeMillis())
-        } catch (e: Exception) {
-            // Best effort: a cache that cannot be written must never take the
-            // category list down with it.
-            logWarn(TAG, "could not cache categories: ${e.message}")
-        }
-    }
-
-    private suspend fun fetch(): List<Category>? = try {
-        val url = "https://firestore.googleapis.com/v1/projects/" +
-                "${FirebaseConfig.PROJECT_ID}/databases/(default)/documents/categories" +
-                "?key=${FirebaseConfig.API_KEY}"
-
-        val response = client.get(url)
-        val body = response.bodyAsText()
-
-        if (!response.status.isSuccess()) {
-            logWarn(TAG, "Firestore returned ${response.status.value}: $body")
-            null
-        } else {
-            json.decodeFromString<FirestoreList>(body).documents
-                .mapNotNull { it.toCategory() }
-                .takeIf { it.isNotEmpty() }
-        }
-    } catch (e: Exception) {
-        logWarn(TAG, "Firestore fetch failed: ${e.message}")
-        null
-    }
+//        cached?.let { return it }
+//
+//        readDisk(fresh = true)?.let {
+//            cached = it
+//            return it
+//        }
+//
+//        repeat(3) { attempt ->
+//            fetch()?.let { fetched ->
+//                cached = fetched
+//                writeDisk(fetched)
+//                return fetched
+//            }
+//            if (attempt < 2) delay(1500)
+//        }
+//
+//        // Offline or over quota: a stale copy of the real list still beats the
+//        // seeded defaults, which carry no edit made in Firestore since.
+//        readDisk(fresh = false)?.let {
+//            logWarn(TAG, "Firestore unavailable, using the stale on-disk copy")
+//            cached = it
+//            return it
+//        }
+//
+//        logWarn(TAG, "Firestore fetch failed after 3 attempts, using seeded defaults")
+//        return DefaultCategories.ALL
+//    }
+//
+//    private fun readDisk(fresh: Boolean): List<Category>? {
+//        val raw = settings.getStringOrNull(DISK_KEY) ?: return null
+//        if (fresh) {
+//            val age = currentTimeMillis() - settings.getLong(DISK_AT, 0L)
+//            // A clock moved backwards leaves a negative age; treat that as stale
+//            // rather than trusting the copy forever.
+//            if (age !in 0 until DISK_TTL_MILLIS) return null
+//        }
+//        return try {
+//            json.decodeFromString<List<Category>>(raw).takeIf { it.isNotEmpty() }
+//        } catch (e: Exception) {
+//            logWarn(TAG, "discarding unreadable category cache: ${e.message}")
+//            null
+//        }
+//    }
+//
+//    private fun writeDisk(value: List<Category>) {
+//        try {
+//            settings.putString(DISK_KEY, json.encodeToString(value))
+//            settings.putLong(DISK_AT, currentTimeMillis())
+//        } catch (e: Exception) {
+//            // Best effort: a cache that cannot be written must never take the
+//            // category list down with it.
+//            logWarn(TAG, "could not cache categories: ${e.message}")
+//        }
+//    }
+//
+//    private suspend fun fetch(): List<Category>? = try {
+//        val url = "https://firestore.googleapis.com/v1/projects/" +
+//                "${FirebaseConfig.PROJECT_ID}/databases/(default)/documents/categories" +
+//                "?key=${FirebaseConfig.API_KEY}"
+//
+//        val response = client.get(url)
+//        print("Firestore response: ${response.bodyAsText()}")
+//        val body = response.bodyAsText()
+//
+//        if (!response.status.isSuccess()) {
+//            logWarn(TAG, "Firestore returned ${response.status.value}: $body")
+//            null
+//        } else {
+//            json.decodeFromString<FirestoreList>(body).documents
+//                .mapNotNull { it.toCategory() }
+//                .takeIf { it.isNotEmpty() }
+//        }
+//    } catch (e: Exception) {
+//        logWarn(TAG, "Firestore fetch failed: ${e.message}")
+//        null
+//    }
 }
 
 /**

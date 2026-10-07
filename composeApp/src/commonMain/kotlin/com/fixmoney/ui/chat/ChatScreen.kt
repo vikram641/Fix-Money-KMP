@@ -35,6 +35,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fixmoney.resources.*
 import com.fixmoney.shared.ai.ChatAskResult
+import com.fixmoney.shared.coins.AiGate
+import com.fixmoney.shared.coins.shortMessage
+import com.fixmoney.ui.coins.LocalCoins
 import com.fixmoney.shared.ai.ChatCategoryAmount
 import com.fixmoney.shared.ai.ChatEngine
 import com.fixmoney.shared.home.HomeInsight
@@ -128,6 +131,7 @@ fun ChatScreen(onBack: () -> Unit) {
     val t = designType()
     val scope = rememberCoroutineScope()
     val engine: ChatEngine = koinInject()
+    val coins = LocalCoins.current
     val homeFactory: HomeStateFactory = koinInject()
 
     val month = remember { currentMonthApi() }
@@ -180,6 +184,24 @@ fun ChatScreen(onBack: () -> Unit) {
                     fromUser = false,
                     timeLabel = currentTimeLabel()
                 )
+                // AI coins: none of these cost anything - the Worker only charges
+                // once the model has answered.
+                is ChatAskResult.Blocked -> {
+                    coins?.onBlocked(result.gate)
+                    Message(
+                        when (result.gate) {
+                            // Not shortMessage(): that one says "open FixMoney",
+                            // which is for the bubble and Siri - the user is in it.
+                            AiGate.NoCoins ->
+                                "You're out of Fixoo Coins. Watch a short video to get more - nothing was charged for this question."
+                            AiGate.Busy ->
+                                "I'm getting a lot of questions right now. Try again in about 30 seconds - your coin was not charged."
+                            else -> result.gate.shortMessage()
+                        },
+                        fromUser = false,
+                        timeLabel = currentTimeLabel()
+                    )
+                }
             }
             messages += reply
             thinking = false

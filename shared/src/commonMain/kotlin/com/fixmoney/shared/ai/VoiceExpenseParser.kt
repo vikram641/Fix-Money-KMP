@@ -1,5 +1,9 @@
 package com.fixmoney.shared.ai
 
+import com.fixmoney.shared.coins.AiBlockedException
+import com.fixmoney.shared.coins.AiFeature
+import com.fixmoney.shared.coins.AiGate
+import com.fixmoney.shared.coins.WalletRepository
 import com.fixmoney.shared.platform.httpClient
 import com.fixmoney.shared.platform.logWarn
 import io.ktor.client.plugins.HttpTimeout
@@ -58,14 +62,22 @@ object VoiceExpenseParser {
         }
     }
 
-    suspend fun parse(spokenText: String, categoryNames: List<String>): ParsedVoiceExpense {
-        return withTimeout(20_000) { call(spokenText, categoryNames) }
+    /** Throws [AiBlockedException] when the coin layer refused the call - nothing was charged. */
+    suspend fun parse(
+        spokenText: String,
+        categoryNames: List<String>,
+        wallet: WalletRepository? = null
+    ): ParsedVoiceExpense {
+        return withTimeout(20_000) { call(spokenText, categoryNames, wallet) }
     }
 
     private suspend fun call(
         spokenText: String,
-        categoryNames: List<String>
+        categoryNames: List<String>,
+        wallet: WalletRepository?
     ): ParsedVoiceExpense {
+        wallet?.precheck(AiFeature.Voice)?.let { if (it != AiGate.Passed) throw AiBlockedException(it) }
+        val ticket = wallet?.ticket(AiFeature.Voice)
         val systemPrompt =
             "You are parsing one short sentence someone just spoke to quickly log a single " +
                 "expense into an expense-tracking app, for example: \"150 on coffee\", " +
@@ -83,6 +95,7 @@ object VoiceExpenseParser {
                 "no markdown code fences."
 
         val response: HttpResponse = client.post(AiProxy.CHAT_URL) {
+            ticket?.applyTo(this)
             contentType(ContentType.Application.Json)
             setBody(
                 VoiceGroqRequest(
@@ -98,6 +111,8 @@ object VoiceExpenseParser {
         }
 
         val bodyText = response.bodyAsText()
+        val gate = wallet?.absorb(ticket, response) ?: AiGate.Passed
+        if (gate != AiGate.Passed) throw AiBlockedException(gate)
         if (!response.status.isSuccess() || bodyText.isBlank()) {
             logWarn(TAG, "Groq call failed: ${response.status.value} $bodyText")
             error("Groq call failed: ${response.status.value}")

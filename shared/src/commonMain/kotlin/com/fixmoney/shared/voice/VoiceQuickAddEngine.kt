@@ -1,5 +1,8 @@
 package com.fixmoney.shared.voice
 
+import com.fixmoney.shared.coins.AiBlockedException
+import com.fixmoney.shared.coins.AiGate
+import com.fixmoney.shared.coins.WalletRepository
 import com.fixmoney.shared.ai.VoiceExpenseParser
 import com.fixmoney.shared.data.CategoryRepository
 import com.fixmoney.shared.expense.ExpenseRepository
@@ -20,6 +23,9 @@ sealed interface VoiceAddResult {
 
     /** Nothing could be parsed - network, quota, or a malformed reply. */
     data class Failed(val reason: String) : VoiceAddResult
+
+    /** AI coins refused the call (no coins, trial cap, or AI busy). Nothing was charged or saved. */
+    data class Blocked(val gate: AiGate) : VoiceAddResult
 }
 
 /**
@@ -35,14 +41,23 @@ sealed interface VoiceAddResult {
 class VoiceQuickAddEngine(
     private val categories: CategoryRepository,
     private val expenses: ExpenseRepository,
-    private val prefs: OnboardingPrefs
+    private val prefs: OnboardingPrefs,
+    private val wallet: WalletRepository
 ) {
 
     suspend fun addFromSpeech(spokenText: String): VoiceAddResult {
         val available = categories.getCategories()
+        val names = available.map { it.name }
 
-        val parsed = try {
-            VoiceExpenseParser.parse(spokenText, available.map { it.name })
+        // The easy phrases are read on the phone: free, offline, instant. Only
+        // what LocalVoiceParser is unsure about reaches the model (and costs a coin).
+        val local = LocalVoiceParser.parse(spokenText, names)
+        if (local == LocalVoiceParser.Result.NoAmount) return VoiceAddResult.NoAmount(spokenText)
+
+        val parsed = if (local is LocalVoiceParser.Result.Parsed) local.expense else try {
+            VoiceExpenseParser.parse(spokenText, names, wallet)
+        } catch (e: AiBlockedException) {
+            return VoiceAddResult.Blocked(e.gate)
         } catch (e: Exception) {
             logWarn(TAG, "voice parse failed: ${e.message}")
             return VoiceAddResult.Failed(e.message ?: "couldn't reach the parser")

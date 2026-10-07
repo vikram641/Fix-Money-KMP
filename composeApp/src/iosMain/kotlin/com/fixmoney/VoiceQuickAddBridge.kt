@@ -1,6 +1,7 @@
 package com.fixmoney
 
 import com.fixmoney.shared.model.CurrencyConstants
+import com.fixmoney.shared.coins.shortMessage
 import com.fixmoney.shared.voice.VoiceAddResult
 import com.fixmoney.shared.voice.VoiceQuickAddEngine
 import kotlinx.coroutines.CoroutineScope
@@ -59,6 +60,9 @@ object VoiceQuickAddBridge : KoinComponent {
                     saved = false,
                     message = "I couldn't add that: ${result.reason}"
                 )
+                // Siri has no screen to show a video on, so it says what happened
+                // and the user tops up from the app.
+                is VoiceAddResult.Blocked -> VoiceAddOutcome(saved = false, message = result.gate.shortMessage())
             }
 
             onResult(outcome)

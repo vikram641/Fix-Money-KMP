@@ -3,6 +3,7 @@ package com.fixmoney.shared.di
 import com.fixmoney.shared.ai.ChatEngine
 import com.fixmoney.shared.config.FeatureFlagRepository
 import com.fixmoney.shared.analytics.AnalyticsStateFactory
+import com.fixmoney.shared.coins.WalletRepository
 import com.fixmoney.shared.data.CategoryRepository
 import com.fixmoney.shared.db.DatabaseBuilderFactory
 import com.fixmoney.shared.db.FixMoneyDatabase
@@ -50,12 +51,15 @@ val sharedModule = module {
     single { ExpenseRepository(get()) }
     single { BudgetRepository(get(), get()) }
     single { BudgetStateFactory(get(), get(), get()) }
-    single { ChatEngine(get(), get()) }
+    // AI coins. The wallet is server-authoritative; see WalletRepository.
+    single { WalletRepository(get(), get(), get()) }
+    single { ChatEngine(get(), get(), get()) }
     single { HomeStateFactory(get(), get(), get()) }
     single { AnalyticsStateFactory(get(), get(), get()) }
-    single { VoiceQuickAddEngine(get(), get(), get()) }
-    single { ReceiptScanEngine(get()) }
+    single { VoiceQuickAddEngine(get(), get(), get(), get()) }
+    single { ReceiptScanEngine(get(), get()) }
     single { ExpenseExporter(get(), get()) }
+
 }
 
 /** Provides the platform's Settings implementation (SharedPreferences / NSUserDefaults). */

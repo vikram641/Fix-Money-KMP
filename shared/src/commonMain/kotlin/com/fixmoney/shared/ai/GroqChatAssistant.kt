@@ -1,5 +1,8 @@
 package com.fixmoney.shared.ai
 
+import com.fixmoney.shared.coins.AiFeature
+import com.fixmoney.shared.coins.AiGate
+import com.fixmoney.shared.coins.WalletRepository
 import com.fixmoney.shared.platform.httpClient
 import com.fixmoney.shared.platform.logWarn
 import io.ktor.client.call.body
@@ -55,10 +58,11 @@ object GroqChatAssistant {
     suspend fun ask(
         question: String,
         dataSummary: String,
-        historyText: String
+        historyText: String,
+        wallet: WalletRepository? = null
     ): ChatAskResult {
         return try {
-            withTimeout(20_000) { call(question, dataSummary, historyText) }
+            withTimeout(20_000) { call(question, dataSummary, historyText, wallet) }
         } catch (e: TimeoutCancellationException) {
             logWarn(TAG, "ask timed out: ${e.message}")
             ChatAskResult.Failure
@@ -71,8 +75,11 @@ object GroqChatAssistant {
     private suspend fun call(
         question: String,
         dataSummary: String,
-        historyText: String
+        historyText: String,
+        wallet: WalletRepository?
     ): ChatAskResult {
+        wallet?.precheck(AiFeature.Fixoo)?.let { if (it != AiGate.Passed) return ChatAskResult.Blocked(it) }
+        val ticket = wallet?.ticket(AiFeature.Fixoo)
         val systemPrompt =
             "You are the AI assistant inside FixMoney, a personal expense-tracking app. " +
                     "You have three jobs:\n\n" + "Founder of this App is Vikram Singh" +
@@ -126,6 +133,7 @@ object GroqChatAssistant {
                     (if (historyText.isNotBlank()) "\n\nEARLIER IN THIS CHAT:\n$historyText" else "")
 
         val response: HttpResponse = client.post(AiProxy.CHAT_URL) {
+            ticket?.applyTo(this)
             contentType(ContentType.Application.Json)
             setBody(
                 GroqRequest(
@@ -141,6 +149,9 @@ object GroqChatAssistant {
         }
 
         val bodyText = response.bodyAsText()
+
+        val gate = wallet?.absorb(ticket, response) ?: AiGate.Passed
+        if (gate != AiGate.Passed) return ChatAskResult.Blocked(gate)
 
         if (response.status == HttpStatusCode.TooManyRequests) {
             logWarn(TAG, "Groq rate limit hit: $bodyText")

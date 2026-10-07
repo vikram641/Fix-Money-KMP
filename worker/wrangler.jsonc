@@ -6,9 +6,60 @@
   "observability": { "enabled": true },
 
   // Tier two when Groq is out of quota. No key, no second account.
-  "ai": { "binding": "AI" }
+  "ai": { "binding": "AI" },
 
-  // Per-IP daily cap. Create the namespace, then uncomment:
+  // One wallet per user, one device record per phone. SQLite-backed, which is
+  // the only kind the Workers Free plan can create.
+  "durable_objects": {
+    "bindings": [
+      { "name": "WALLET", "class_name": "WalletDO" },
+      { "name": "DEVICE", "class_name": "DeviceDO" },
+      { "name": "IP_GATE", "class_name": "IpGateDO" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["WalletDO", "DeviceDO"] },
+    { "tag": "v2", "new_sqlite_classes": ["IpGateDO"] }
+  ],
+
+  // The coin economy. These are the *defaults*: any field present in the
+  // Firestore document `coin_config/app` overrides them live, within 5 minutes,
+  // with no deploy (see loadCoinConfig in src/config.ts for field names).
+  // Secrets (GROQ_API_KEY, TOKEN_SECRET) are set with `wrangler secret put`.
+  "vars": {
+    // Public Firebase web config - the same values ship in the app.
+    "FIREBASE_PROJECT_ID": "expenseapp-7b500",
+    "FIREBASE_API_KEY": "AIzaSyBp-93QyYAariQ5C5ILT1pj8hT1IjZwgfE",
+    // "true" once every shipped build sends a device token; until then
+    // token-less requests still use the old uncharged path.
+    "REQUIRE_AUTH": "false",
+    // New wallets (= free trials) per network per day. Loose on purpose: mobile
+    // carriers put many phones behind one address. "0" turns it off.
+    "NEW_ACCOUNTS_PER_IP": "20",
+    "TRIAL_DAYS": "5",
+    "TRIAL_DAILY_CAP": "30",
+    "REWARD_PER_AD": "5",
+    "DAILY_AD_CAP": "10",
+    "WELCOME_BONUS": "10",
+    "COST_FIXOO": "1",
+    "COST_VOICE": "1",
+    "COST_SCAN": "1",
+    "COST_INSIGHT": "0",
+    // 330 = IST, so the daily limits reset at the user's midnight.
+    "DAY_OFFSET_MINUTES": "330",
+    // Fixoo Premium (Google Play subscription, Rs 99/month). The product id
+    // must match the subscription created in Play Console; the service-account
+    // key goes in the PLAY_SERVICE_ACCOUNT secret. Premium AI use is capped
+    // per day for fair use - premium removes coins, not the shared AI quota.
+    "PLAY_PACKAGE_NAME": "com.vikram641.expensetracker",
+    "PREMIUM_PRODUCT_ID": "fixoo_premium_monthly",
+    "PREMIUM_DAILY_CAP": "100",
+    // Numeric part of the rewarded ad unit id(s), comma-separated - SSV reports
+    // `ad_unit` without the "ca-app-pub-.../" prefix. Empty accepts any unit.
+    "REWARDED_AD_UNITS": "8131398118"
+  }
+
+  // Per-IP daily cap for the legacy token-less path. Create the namespace, then uncomment:
   //   npx wrangler kv namespace create RATE
   // "kv_namespaces": [{ "binding": "RATE", "id": "<id printed by that command>" }]
 }

@@ -18,4 +18,5 @@ object Routes {
     const val SCAN_RECEIPT = "scan_receipt"
     const val EDIT_PROFILE = "edit_profile"
     const val EXPENSE_DETAIL = "expense_detail"
+    const val WALLET = "wallet"
 }

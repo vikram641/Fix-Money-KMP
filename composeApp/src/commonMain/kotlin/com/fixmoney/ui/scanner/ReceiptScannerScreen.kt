@@ -23,6 +23,9 @@ import androidx.compose.ui.unit.sp
 import com.fixmoney.shared.receipt.ExtractedReceipt
 import com.fixmoney.shared.receipt.ReceiptImageStatus
 import com.fixmoney.shared.receipt.ReceiptScanEngine
+import com.fixmoney.shared.coins.AiBlockedException
+import com.fixmoney.shared.coins.shortMessage
+import com.fixmoney.ui.coins.LocalCoins
 import com.fixmoney.resources.Res
 import com.fixmoney.resources.nd_check_circle
 import com.fixmoney.resources.nd_scan_doc
@@ -69,6 +72,7 @@ fun ReceiptScannerScreen(
     val colors = Design.colors
     val t = designType()
     val engine: ReceiptScanEngine = koinInject()
+    val coins = LocalCoins.current
     val scope = rememberCoroutineScope()
 
     var captured by remember { mutableStateOf<ByteArray?>(null) }
@@ -197,7 +201,15 @@ fun ReceiptScannerScreen(
                         reading = true
                         hint = "Reading receipt…"
                         scope.launch {
-                            val result = engine.scan(shot)
+                            val result = try {
+                                engine.scan(shot)
+                            } catch (e: AiBlockedException) {
+                                // AI coins refused the scan; nothing was charged.
+                                reading = false
+                                hint = e.gate.shortMessage()
+                                coins?.onBlocked(e.gate)
+                                return@launch
+                            }
                             reading = false
                             val retry = retryMessageFor(result)
                             if (retry != null) hint = retry else onScanned(result!!)

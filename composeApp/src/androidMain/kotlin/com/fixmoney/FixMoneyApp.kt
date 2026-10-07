@@ -17,6 +17,7 @@ class FixMoneyApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        DebugWorker.apply(this) // no-op outside debug builds
         initKoin { androidContext(this@FixMoneyApp) }
         restartVoiceBubbleIfEnabled()
     }
