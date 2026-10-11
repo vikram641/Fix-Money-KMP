@@ -1855,7 +1855,7 @@ Decisions worth knowing:
 - Fixoo's DATA block is scoped by month (this month plus last month, per currency). History is paired in order and capped at 6 turns.
 - The four tabs use `rememberToday()` / `rememberFollowingMonth()` (`ui/components/Today.kt`), so a midnight rollover refreshes them.
 - Navigation goes through `go(route)` (`launchSingleTop`), and `goBack` only pops when there is a previous entry.
-- Worker `premiumToRecheck` is throttled with `checkedAt`. **Not deployed.**
+- Worker `premiumToRecheck` is throttled with `checkedAt`. Deployed 2026-10-12 (`b338d019`).
 
 Second pass, 2026-10-12, all fixed:
 - **Totals count only the profile's currency.** Use `ExpenseEntity.isIn()` / `inCurrency()`. Never sum rows of different currencies.
@@ -1863,7 +1863,7 @@ Second pass, 2026-10-12, all fixed:
 - **SIP maths moved to `shared/calc/SipMath.kt`.**
 - **CSV builder is top-level `buildExpenseCsv` / `csvField`.**
 - **The state factories take `todayOverride`** so tests can use a fixed date.
-- **Worker `PremiumTokenDO` (migration v3)** binds one account per Play token. **Not deployed.**
+- **Worker `PremiumTokenDO` (migration v3)** binds one account per Play token. Deployed 2026-10-12 (`b338d019`).
 - **Analytics scope tabs are in the pinned `sticky` header.**
 
 **UI tweaks (2026-10-12):** the app-bar bell is hidden behind `SHOW_NOTIFICATION_BELL = false` in `DesignScaffold.kt` (kept for future notifications). "FIXOO INSIGHT" (not Copilot) on Analytics. The scanner chip says "FIXOO RECEIPT SCAN". The Settings footer says "FixMoney v<version>". The scanner shutter now sits at bottom 22dp and `FRAME_HEIGHT_FRACTION` is 0.48, so the hint card no longer overlaps the shutter or frame.
@@ -1904,4 +1904,14 @@ Plan agreed with the user: finish the store screenshots first, then a proper tes
 - Signed AAB: `composeApp/build/outputs/bundle/release/composeApp-release.aab` (~40 MB). Cert SHA-256 is `8E:62:...:F7:17`, the upload key. A copy plus the 21-language "What's new" text is in `~/Downloads/FixMoney_v2.2_release/`.
 - The user uploads the AAB by hand (it's over the Chrome tool's 10 MB limit) and submits it together with the pending listing and screenshot changes.
 - The release build was **not smoke-tested on the device**. The Play-signed install on the phone blocks `adb install` of a locally signed build. After rollout, check the Play-served build ([[verify against distributed artifact]]): first launch after the update from v10, Home orb animation (Compottie WebP under R8), voice add, receipt scan.
-- The Worker changes (premium recheck throttle, `PremiumTokenDO` migration v3) are committed but **not deployed**. The app doesn't depend on them.
+- The Worker changes (premium recheck throttle, `PremiumTokenDO` migration v3) are **deployed**; see the Worker deploy entry below.
+
+## Worker deploy 2026-10-12: version `b338d019-dfdc-4818-920b-b7634b160348`
+- Ships the premium recheck throttle (`checkedAt`, 12 h) and `PremiumTokenDO` (migration v3, binding `PREMIUM_TOKEN`). The previous version was `dc40d63e`; roll back to it from the dashboard or with `wrangler rollback`.
+- Checked locally before the deploy:
+  - e2e trial suite 11/11 and paid suite 20/20, run on a second `wrangler dev` on port 8788.
+  - Ad-hoc binding test: the same token verified on account B → B active, A loses Premium. A re-verifies → it moves back.
+- Production smoke test after the deploy:
+  - `/` 404, wallet without a token 401, register 200, wallet 200.
+  - premium verify with a short token → 400. With a fake 60-character token → 402 `PREMIUM_INACTIVE` / `INVALID_TOKEN`, so the Play API call now really happens. This was 502 `PLAY_UNAVAILABLE` on 10-07.
+  - Legacy chat 200, bad SSV 400.
