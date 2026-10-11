@@ -30,7 +30,9 @@ object LocalVoiceParser {
     private const val MAX_AMOUNT = 10_000_000
     private const val MAX_NOTE_WORDS = 4
 
-    private val NUMBER = Regex("""\d[\d,]*(\.\d+)?k?""")
+    // Commas only as real digit grouping ("1,250", "1,25,000"). `\d[\d,]*` read
+    // the recogniser's "500,4 t-shirt" ('for' heard as 4) as one number, 5004.
+    private val NUMBER = Regex("""\d{1,3}(?:,\d{2,3})+(?:\.\d+)?k?|\d+(?:\.\d+)?k?""")
 
     /** Currency words and the glue of "spent 40 on auto" / "auto ke 40 diye". */
     private val FILLER = setOf(
@@ -96,12 +98,15 @@ object LocalVoiceParser {
             .map { it.trim('.') }
             .filter { it.isNotEmpty() }
 
+        // "-200 refund" / "minus": the sign changes what the number means.
+        if (Regex("""(^|\s)-\s?\d""").containsMatchIn(text)) return Result.Unsure
         if (numbers.isEmpty()) {
             return if (words.any { it in NUMBER_WORDS }) Result.Unsure else Result.NoAmount
         }
         if (numbers.size != 1 || words.any { it in NUMBER_WORDS || it in AMBIGUOUS }) return Result.Unsure
 
         val amount = amountOf(numbers.single()) ?: return Result.Unsure
+        if (amount == 0) return Result.NoAmount
         if (amount !in 1..MAX_AMOUNT) return Result.Unsure
 
         val described = words.filter { it !in FILLER }

@@ -1,5 +1,9 @@
 package com.fixmoney.shared.expense
 
+import com.fixmoney.shared.db.isIn
+
+import com.fixmoney.shared.db.amountValue
+
 import com.fixmoney.shared.db.BudgetDao
 import com.fixmoney.shared.db.BudgetEntity
 import com.fixmoney.shared.db.ExpenseDao
@@ -48,9 +52,6 @@ class BudgetRepository(
             budgets.observeForMonth(month),
             expenses.observeExpensesForMonth(month)
         ) { budgetRows, expenseRows ->
-            val spentByCategory = expenseRows
-                .groupBy { it.categoryId }
-                .mapValues { (_, rows) -> rows.sumOf { it.amount.toIntOrNull() ?: 0 } }
 
             budgetRows.map { budget ->
                 BudgetProgress(
@@ -60,7 +61,10 @@ class BudgetRepository(
                     categoryColor = budget.categoryColor,
                     categoryIcon = budget.categoryIcon,
                     limit = budget.limitAmount,
-                    spent = spentByCategory[budget.categoryId] ?: 0
+                    // Only expenses in the budget's own currency count against it.
+                    spent = expenseRows
+                        .filter { it.categoryId == budget.categoryId && it.isIn(budget.currency.ifBlank { it.currency }) }
+                        .sumOf { it.amountValue }
                 )
             }
         }

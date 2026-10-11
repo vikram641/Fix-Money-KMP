@@ -1,6 +1,7 @@
 import type { WalletDO } from "./wallet";
 import type { DeviceDO } from "./device";
 import type { IpGateDO } from "./ipgate";
+import type { PremiumTokenDO } from "./premiumtoken";
 
 export interface Env {
   GROQ_API_KEY: string;
@@ -21,6 +22,8 @@ export interface Env {
   DEVICE: DurableObjectNamespace<DeviceDO>;
   /** New wallets per network per day - see ipgate.ts. Optional so older configs still run. */
   IP_GATE?: DurableObjectNamespace<IpGateDO>;
+  /** One active account per Play purchase token. Optional so older deploys keep working. */
+  PREMIUM_TOKEN?: DurableObjectNamespace<PremiumTokenDO>;
   /** Limit for IP_GATE. "0" disables it. */
   NEW_ACCOUNTS_PER_IP?: string;
 

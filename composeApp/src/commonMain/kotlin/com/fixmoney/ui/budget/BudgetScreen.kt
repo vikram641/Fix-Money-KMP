@@ -75,13 +75,14 @@ fun BudgetScreen() {
     val prefs: OnboardingPrefs = koinInject()
     val scope = rememberCoroutineScope()
 
-    var month by remember { mutableStateOf(currentMonthApi()) }
+    val today = com.fixmoney.ui.components.rememberToday()
+    var month by com.fixmoney.ui.components.rememberFollowingMonth(today)
     var showMonthPicker by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<EditTarget?>(null) }
     var categories by remember { mutableStateOf<List<Category>>(emptyList()) }
     LaunchedEffect(Unit) { categories = categoryRepo.getCategories() }
 
-    val flow = remember(month) { factory.observe(month) }
+    val flow = remember(month, today) { factory.observe(month) }
     val state by flow.collectAsStateWithLifecycle(remember(month) { factory.build(month = month) })
 
     val scroll = rememberScrollState()

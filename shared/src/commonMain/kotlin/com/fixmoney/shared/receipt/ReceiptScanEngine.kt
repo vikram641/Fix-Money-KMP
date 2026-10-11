@@ -36,6 +36,8 @@ class ReceiptScanEngine(
     suspend fun scan(imageBytes: ByteArray): ExtractedReceipt? {
         val rawText = try {
             recognizeReceiptText(imageBytes)
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e // leaving the screen must cancel the call, not report a failure
         } catch (e: Exception) {
             logWarn(TAG, "OCR failed: ${e.message}")
             return null
@@ -57,6 +59,8 @@ class ReceiptScanEngine(
             ReceiptTextParser.parse(rawText, categoryNames, wallet)
         } catch (e: AiBlockedException) {
             throw e
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e // leaving the screen must cancel the call, not report a failure
         } catch (e: Exception) {
             logWarn(TAG, "parse failed: ${e.message}")
             null

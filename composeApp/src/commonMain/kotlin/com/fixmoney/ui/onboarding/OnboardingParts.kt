@@ -280,23 +280,12 @@ fun SetupIconTile(icon: DrawableResource, modifier: Modifier = Modifier) {
     }
 }
 
-/**
- * Indian digit grouping: last three digits, then pairs - 100000 renders as
- * `1,00,000`, not `100,000`.
- *
- * Lives here rather than on the budget step because Edit Profile and the SIP
- * calculator import it too; it moved when that screen was rebuilt.
- */
-fun formatIndian(value: Int): String {
-    val digits = (if (value < 0) -value else value).toString()
-    val grouped = if (digits.length <= 3) {
-        digits
-    } else {
-        val last3 = digits.takeLast(3)
-        val head = digits.dropLast(3).reversed().chunked(2).joinToString(",").reversed()
-        "$head,$last3"
-    }
-    return if (value < 0) "-$grouped" else grouped
-}
+/** Digit grouping for the profile's currency; see shared `model/MoneyFormat.kt`. */
+fun formatIndian(value: Int): String = com.fixmoney.shared.model.formatGrouped(value.toLong())
+
+fun formatGrouped(value: Long): String = com.fixmoney.shared.model.formatGrouped(value)
 
 
+
+/** Long enough for any real name; longer ones overflowed the greeting and avatar. */
+const val MAX_NAME_LENGTH = 40

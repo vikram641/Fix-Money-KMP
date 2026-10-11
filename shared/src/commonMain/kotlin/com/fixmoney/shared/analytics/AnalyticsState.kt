@@ -1,5 +1,9 @@
 package com.fixmoney.shared.analytics
 
+import com.fixmoney.shared.db.inCurrency
+
+import com.fixmoney.shared.db.amountValue
+
 import com.fixmoney.shared.db.BudgetDao
 import com.fixmoney.shared.db.ExpenseEntity
 import com.fixmoney.shared.expense.ExpenseRepository
@@ -101,12 +105,16 @@ class AnalyticsStateFactory(
         }
 
     fun build(
-        allRows: List<ExpenseEntity> = emptyList(),
+        allRowsAnyCurrency: List<ExpenseEntity> = emptyList(),
         anchorMonth: String = currentMonthApi(),
         scope: AnalyticsScope = AnalyticsScope.Month,
-        monthBudget: Int = 0
+        monthBudget: Int = 0,
+        todayOverride: String? = null
     ): AnalyticsUiState {
-        val symbol = CurrencyConstants.symbolFor(prefs.getCurrencyCode())
+        val profileCurrency = prefs.getCurrencyCode()
+        val symbol = CurrencyConstants.symbolFor(profileCurrency)
+        // Never add ₹ rows to a $ total; see ExpenseEntity.isIn.
+        val allRows = allRowsAnyCurrency.inCurrency(profileCurrency)
         val months = monthsIn(anchorMonth, scope)
         val previousMonths = monthsIn(shiftMonthKey(anchorMonth, -months.size), scope)
 
@@ -116,7 +124,7 @@ class AnalyticsStateFactory(
         val total = rows.sumOf { it.amountInt }
         val previousTotal = previousRows.sumOf { it.amountInt }
 
-        val today = todayIso()
+        val today = todayOverride ?: todayIso()
         val isCurrent = monthOf(today) in months
         // Days elapsed in the period: up to today when it is still running,
         // otherwise the whole thing. Dividing by the full length of a month that
@@ -148,8 +156,13 @@ class AnalyticsStateFactory(
             velocity = velocity(rows, months, scope, dailyBurn, today, isCurrent),
             allocation = allocation(rows, previousRows, total),
             payees = payees(rows, total),
+            // Always this month's spend against this month's budget. Passing a
+            // Quarter/Year total here forecast "exceed budget by day 8" from three
+            // months of spend divided by today's day of the month.
             insight = if (isCurrent) {
-                HomeInsightEngine.compute(allRows, total, monthBudget, today)
+                val thisMonth = monthOf(today)
+                val monthSpent = allRows.filter { it.date.startsWith(thisMonth) }.sumOf { it.amountValue }
+                HomeInsightEngine.compute(allRows, monthSpent, monthBudget, today)
             } else null
         )
     }
@@ -259,7 +272,7 @@ class AnalyticsStateFactory(
 
 /* ------------------------------------------------------------------ dates */
 
-internal val ExpenseEntity.amountInt: Int get() = amount.toIntOrNull() ?: 0
+internal val ExpenseEntity.amountInt: Int get() = amountValue
 
 /** The months the scope covers, oldest first, **ending** at [anchorMonth]. */
 internal fun monthsIn(anchorMonth: String, scope: AnalyticsScope): List<String> {

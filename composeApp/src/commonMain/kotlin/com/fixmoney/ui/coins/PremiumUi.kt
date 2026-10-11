@@ -45,7 +45,8 @@ internal const val MANAGE_SUBSCRIPTION_URL =
 
 /** "12 November 2026"-style date for a Play expiry. India-first app, so the day boundary is IST. */
 internal fun premiumDate(millis: Long): String =
-    prettyDate(epochDayToIso((millis + 19_800_000L) / 86_400_000L))
+    // The device's own zone; a fixed +05:30 put the renewal a day off west of India.
+    prettyDate(com.fixmoney.shared.platform.dateIsoOf(millis))
 
 /**
  * The buyable premium card (or "coming soon" when the store can't sell it -

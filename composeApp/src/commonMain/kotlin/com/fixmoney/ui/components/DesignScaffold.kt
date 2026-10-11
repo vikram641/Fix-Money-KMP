@@ -46,10 +46,12 @@ private const val HAIRLINE_FADE_PX = 24f
  * cannot be recoloured, and these are used in a dozen tints.
  */
 @Composable
-fun LineIcon(res: DrawableResource, tint: Color, size: Dp) {
+fun LineIcon(res: DrawableResource, tint: Color, size: Dp, contentDescription: String? = null) {
     Icon(
         painter = painterResource(res),
-        contentDescription = null,
+        // Null for decorative icons; set it when the icon is the only label a
+        // button has, or TalkBack/VoiceOver reads it as an unlabelled button.
+        contentDescription = contentDescription,
         tint = tint,
         modifier = Modifier.size(size)
     )
@@ -125,21 +127,35 @@ fun DesignAppBar(
         Spacer(Modifier.width(8.dp))
         Text(title, style = t.headlineSm, color = colors.textPrimary)
         Spacer(Modifier.weight(1f))
-        // Inert: there is no notification feed to open.
-        Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-            LineIcon(Res.drawable.nd_bell, colors.textMuted, 22.dp)
+        // Hidden until notifications are built - the bell had no feed behind it.
+        // Kept in code on purpose: flip SHOW_NOTIFICATION_BELL when that lands.
+        if (SHOW_NOTIFICATION_BELL) {
+            Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                LineIcon(Res.drawable.nd_bell, colors.textMuted, 22.dp)
+            }
         }
         if (actions != null) {
             actions()
             Spacer(Modifier.width(8.dp))
         }
+        // The chosen avatar, or the plain person glyph until one is picked.
+        val avatar = com.fixmoney.ui.settings.ProfileAvatarOption.byId(com.fixmoney.ui.settings.rememberAvatarId())
         Box(
             modifier = Modifier.size(32.dp).clip(CircleShape)
                 .background(colors.accent)
                 .clickable(onClick = onOpenProfile),
             contentAlignment = Alignment.Center
         ) {
-            LineIcon(Res.drawable.nd_person, colors.surface, 18.dp)
+            if (avatar != null) {
+                Image(
+                    painter = painterResource(avatar.res),
+                    contentDescription = "Profile",
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                LineIcon(Res.drawable.nd_person, colors.surface, 18.dp, contentDescription = "Profile")
+            }
         }
     }
 }
@@ -253,3 +269,6 @@ fun CollapsingScreen(
         }
     }
 }
+
+/** The app-bar bell. Off until there is a notification feed to open. */
+private const val SHOW_NOTIFICATION_BELL = false

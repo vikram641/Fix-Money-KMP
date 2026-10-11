@@ -46,7 +46,8 @@ import java.io.ByteArrayOutputStream
 
 /** The cut-out, as fractions of the surface - 85% x 55%, centred, same as the old overlay view. */
 private const val FRAME_WIDTH_FRACTION = 0.85f
-private const val FRAME_HEIGHT_FRACTION = 0.55f
+// 0.48, not 0.55: at 0.55 the frame's bottom edge ran under the hint card.
+private const val FRAME_HEIGHT_FRACTION = 0.48f
 
 /**
  * CameraX preview with the old app's alignment overlay, rebuilt in Compose.
@@ -261,7 +262,9 @@ actual fun ReceiptCaptureSurface(
         // without the outline moving with it.
         Box(
             modifier = Modifier.align(Alignment.BottomCenter)
-                .navigationBarsPadding().padding(bottom = 96.dp)
+                // Below the hint card the shared screen draws (it reserves 110dp
+                // for this); at 96dp the card sat on top of the shutter.
+                .navigationBarsPadding().padding(bottom = 22.dp)
                 .size(78.dp).clip(CircleShape)
                 .background(Color.White.copy(alpha = 0.14f))
                 .border(2.dp, Color.White.copy(alpha = 0.40f), CircleShape),

@@ -217,11 +217,14 @@ class WalletRepository(
      * lands within seconds; this gives up after about half a minute and the
      * coins simply appear on a later refresh.
      */
-    suspend fun awaitReward(coinsBefore: Int): Boolean {
+    suspend fun awaitReward(coinsBefore: Int, adsLeftBefore: Int? = null): Boolean {
         for (waitMs in longArrayOf(1_500, 2_000, 3_000, 4_000, 6_000, 8_000, 10_000)) {
             delay(waitMs)
             val now = refresh() ?: continue
-            if (now.coins > coinsBefore) return true
+            // This video counted only if a daily slot was used up; a coin rise on
+            // its own can be an older video's reward arriving late.
+            val slotUsed = adsLeftBefore == null || now.adsLeftToday < adsLeftBefore
+            if (now.coins > coinsBefore && slotUsed) return true
         }
         return false
     }

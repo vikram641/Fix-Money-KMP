@@ -31,7 +31,9 @@ private const val GROQ_MODEL = "openai/gpt-oss-20b"
 data class ParsedVoiceExpense(
     val amount: Int,
     val category: String?,
-    val note: String
+    val note: String,
+    /** yyyy-MM-dd when the sentence named a day ("yesterday"); null means today. */
+    val date: String? = null
 )
 
 /**
@@ -85,13 +87,16 @@ object VoiceExpenseParser {
                 "Extract:\n" +
                 "- amount: the number of rupees mentioned, as a whole number with no currency " +
                 "symbol or decimals. If no number that clearly represents an amount of money is " +
-                "present, use 0.\n" +
+                "present, use 0. NEVER join separate numbers into one: speech recognition often " +
+                "hears 'to'/'for' as 2/4, so \"500 4 shirt\" means 500 for a shirt, not 5004.\n" +
+                "- date: if the sentence says when (\"yesterday\", \"kal\", \"last friday\", a date), " +
+                "the date as yyyy-MM-dd relative to today ${com.fixmoney.shared.platform.todayIso()}; otherwise null.\n" +
                 "- category: the single best matching category from this allowed list: " +
                 "${categoryNames.joinToString(", ")} - or \"NONE\" if nothing fits confidently.\n" +
                 "- note: a short 2-4 word description of what the expense was for, close to the " +
                 "user's own words (e.g. \"Coffee\", \"Auto fare\", \"Electricity bill\").\n\n" +
                 "Respond with ONLY a JSON object shaped exactly like " +
-                "{\"amount\": integer, \"category\": string, \"note\": string} - no other text, " +
+                "{\"amount\": integer, \"category\": string, \"note\": string, \"date\": string|null} - no other text, " +
                 "no markdown code fences."
 
         val response: HttpResponse = client.post(AiProxy.CHAT_URL) {
@@ -123,7 +128,7 @@ object VoiceExpenseParser {
             ?.takeIf { it.isNotBlank() }
             ?: error("Groq returned no content")
 
-        val parsed = json.decodeFromString<VoicePayload>(content)
+        val parsed = LenientAiJson.decodeFromString<VoicePayload>(extractJsonObject(content))
         val category = parsed.category?.takeIf {
             it.isNotBlank() && !it.equals("NONE", ignoreCase = true)
         }
@@ -131,7 +136,9 @@ object VoiceExpenseParser {
         return ParsedVoiceExpense(
             amount = parsed.amount.coerceAtLeast(0),
             category = category,
-            note = parsed.note?.takeIf { it.isNotBlank() } ?: spokenText
+            note = parsed.note?.takeIf { it.isNotBlank() } ?: spokenText,
+            // Only past or today: a future date from the model is a misread.
+            date = validIsoDateOrNull(parsed.date)?.takeIf { it <= com.fixmoney.shared.platform.todayIso() }
         )
     }
 }
@@ -159,7 +166,8 @@ private data class VoiceGroqChoice(val message: VoiceGroqMessage? = null)
 /** The model's own JSON reply, parsed out of the message content string. */
 @Serializable
 private data class VoicePayload(
-    val amount: Int = 0,
+    @Serializable(with = LenientIntSerializer::class) val amount: Int = 0,
     val category: String? = null,
-    val note: String? = null
+    val note: String? = null,
+    val date: String? = null
 )

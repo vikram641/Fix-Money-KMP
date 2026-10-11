@@ -78,7 +78,9 @@ fun DashboardScreen(
             else -> true
         }
     }
-    var tab by remember { mutableStateOf(DashboardTab.Home) }
+    // Saveable: opening Edit Profile / SIP from Settings and pressing Back used
+    // to land on Home, because the tab reset when the dashboard was recomposed.
+    var tab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(DashboardTab.Home) }
 
     // The selected tab can vanish under the user when a refresh lands mid-use.
     LaunchedEffect(tabs) {

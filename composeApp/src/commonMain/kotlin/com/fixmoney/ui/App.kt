@@ -39,6 +39,7 @@ import com.fixmoney.shared.coins.AiFeature
 import com.fixmoney.shared.coins.WalletEvent
 import com.fixmoney.shared.coins.WalletRepository
 import com.fixmoney.ui.coins.CoinSheet
+import com.fixmoney.ui.coins.PremiumState
 import com.fixmoney.ui.coins.CoinSheetHost
 import com.fixmoney.ui.coins.CoinsController
 import com.fixmoney.ui.coins.LocalCoins
@@ -70,7 +71,17 @@ fun App() {
     val flags = rememberFeatureFlags(featureFlags)
     // Settings' switch has to change the theme immediately, so the stored
     // preference is lifted into state here rather than read per-composition.
-    var darkOverride by remember { mutableStateOf(appPrefs.darkMode() ?: systemDark) }
+    // Null means "follow the system": a user who never touched the switch now
+    // follows a system theme change mid-session instead of keeping the
+    // launch-time value until the next process start.
+    var darkPreference by remember { mutableStateOf(appPrefs.darkMode()) }
+    val darkOverride = darkPreference ?: systemDark
+
+    // Digit grouping (lakh vs thousand) follows the profile's currency.
+    val profilePrefs: OnboardingPrefs = koinInject()
+    remember(profilePrefs) {
+        com.fixmoney.shared.model.MoneyFormat.currencyCode = { profilePrefs.getCurrencyCode() }
+    }
 
     // The dark/light switch wipes in from the toggle rather than snapping.
     // Hosted here because it has to sit *outside* the theme to photograph the
@@ -94,7 +105,22 @@ fun App() {
             val categories: CategoryRepository = koinInject()
             val scope = rememberCoroutineScope()
             val navController = rememberNavController()
-            val state = remember { OnboardingState(prefs, budgets, categories) }
+            // Saveable: the nav back stack survives process death, so a plain
+            // remember brought the user back to All Set with their answers reset
+            // to "there", ₹25,000 and INR - and "Start tracking" saved those.
+            val state = androidx.compose.runtime.saveable.rememberSaveable(
+                saver = androidx.compose.runtime.saveable.listSaver(
+                    save = { listOf(it.name, it.monthlyBudget.toString(), it.currencyCode, it.selectedCategoryIds.joinToString(",")) },
+                    restore = { saved ->
+                        OnboardingState(prefs, budgets, categories).apply {
+                            name = saved[0]
+                            monthlyBudget = saved[1].toIntOrNull() ?: 25_000
+                            currencyCode = saved[2]
+                            saved[3].split(",").filter { it.isNotBlank() }.forEach { selectedCategoryIds.add(it) }
+                        }
+                    }
+                )
+            ) { OnboardingState(prefs, budgets, categories) }
 
             // The scanner's result on its way back to Add Expense. The old app
             // used the nav back stack's savedStateHandle for this; holding it
@@ -118,7 +144,14 @@ fun App() {
 
             // "Skip" on any feature screen jumps to setupName, as the old app did.
             val skipToSetup: () -> Unit = { navController.navigate(Routes.SETUP_NAME) { launchSingleTop = true } }
-            val goBack: () -> Unit = { navController.popBackStack() }
+            // Only pops when there is somewhere to go back to: a double tap on Back
+            // during the exit animation used to pop Home itself and leave an empty
+            // NavHost (a blank screen).
+            val goBack: () -> Unit = {
+                if (navController.previousBackStackEntry != null) navController.popBackStack()
+            }
+            // A double tap on any "open X" button pushed X twice.
+            fun go(route: String) = navController.navigate(route) { launchSingleTop = true }
 
             // AI coins. One controller for the whole app so any screen refused
             // for coins can raise the sheet; the balance itself always comes
@@ -131,7 +164,10 @@ fun App() {
             // (reinstall, new phone, a confirmation that never arrived) is
             // re-sent to the Worker quietly on launch.
             val premiumStore = rememberPremiumStore { token ->
-                scope.launch { coins.confirmPremium(token, showSheet = false) }
+                // If the "Payment pending" sheet is still up, this is that payment
+                // completing - show the result there instead of silently.
+                val pendingOnScreen = coins.sheet == CoinSheet.Premium(PremiumState.Pending)
+                scope.launch { coins.confirmPremium(token, showSheet = pendingOnScreen) }
             }
             coins.store = premiumStore
             coins.openWallet = { navController.navigate(Routes.WALLET) { launchSingleTop = true } }
@@ -154,7 +190,10 @@ fun App() {
                 navController.currentBackStackEntryFlow.first { it.destination.route != Routes.SPLASH }
                 if (prefs.isOnboardingComplete()) {
                     when (launchTarget) {
-                        LaunchTarget.WALLET -> navController.navigate(Routes.WALLET) { launchSingleTop = true }
+                        // The coin_wallet flag hides the wallet; a deep link must not reopen it.
+                        LaunchTarget.WALLET -> if (flags[com.fixmoney.shared.config.FeatureFlag.CoinWallet] != false) {
+                            navController.navigate(Routes.WALLET) { launchSingleTop = true }
+                        }
                         LaunchTarget.OUT_OF_COINS -> {
                             coins.sheet = CoinSheet.OutOfCoins
                             walletRepo.refresh()
@@ -278,6 +317,8 @@ fun App() {
                             scope.launch { state.complete() }
                             navController.navigate(Routes.HOME) {
                                 popUpTo(Routes.WELCOME) { inclusive = true }
+                                // A double tap pushed a second Home under the first.
+                                launchSingleTop = true
                             }
                         }
                     )
@@ -286,16 +327,16 @@ fun App() {
                     DashboardScreen(
                         onAddExpense = {
                             editingExpenseId = null
-                            navController.navigate(Routes.ADD_EXPENSE)
+                            go(Routes.ADD_EXPENSE)
                         },
-                        onAskAi = { navController.navigate(Routes.CHAT) },
+                        onAskAi = { go(Routes.CHAT) },
                         darkTheme = darkOverride,
-                        onDarkModeChanged = { darkOverride = it },
-                        onOpenSip = { navController.navigate(Routes.SIP) },
-                        onOpenProfile = { navController.navigate(Routes.EDIT_PROFILE) },
+                        onDarkModeChanged = { darkPreference = it },
+                        onOpenSip = { go(Routes.SIP) },
+                        onOpenProfile = { go(Routes.EDIT_PROFILE) },
                         onOpenExpense = {
                             detailExpenseId = it
-                            navController.navigate(Routes.EXPENSE_DETAIL)
+                            go(Routes.EXPENSE_DETAIL)
                         }
                     )
                 }
@@ -308,7 +349,7 @@ fun App() {
                         onBack = goBack,
                         onEdit = { id ->
                             editingExpenseId = id
-                            navController.navigate(Routes.ADD_EXPENSE)
+                            go(Routes.ADD_EXPENSE)
                         }
                     )
                 }
@@ -321,7 +362,13 @@ fun App() {
                 composable(Routes.ADD_EXPENSE) {
                     AddExpenseScreen(
                         onClose = goBack,
-                        onScanReceipt = { coins.proceedIf(AiFeature.Scan) { navController.navigate(Routes.SCAN_RECEIPT) } },
+                        // The coin precheck is a network round trip; if the user has
+                        // left Add Expense by the time it answers, don't open the camera.
+                        onScanReceipt = {
+                            coins.proceedIf(AiFeature.Scan) {
+                                if (navController.currentDestination?.route == Routes.ADD_EXPENSE) go(Routes.SCAN_RECEIPT)
+                            }
+                        },
                         scanned = pendingScan,
                         onScanConsumed = { pendingScan = null },
                         editingId = editingExpenseId

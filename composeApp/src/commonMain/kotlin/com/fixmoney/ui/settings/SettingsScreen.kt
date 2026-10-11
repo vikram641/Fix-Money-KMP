@@ -383,17 +383,7 @@ private fun ProfileCard(name: String, onEdit: () -> Unit) {
             .padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Box(
-                Modifier.size(54.dp).clip(RoundedCornerShape(16.dp))
-                    .background(Brush.linearGradient(listOf(colors.fabStart, colors.fabEnd))),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    name.first().uppercase(),
-                    style = t.headlineLg.copy(fontSize = 24.sp),
-                    color = Color.White
-                )
-            }
+            ProfileAvatar(name, 54.dp, shapeRadius = 16.dp)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -724,19 +714,10 @@ private fun AppFooter() {
         Row(verticalAlignment = Alignment.CenterVertically) {
             LineIcon(Res.drawable.nd_sparkle, colors.accent, 15.dp)
             Spacer(Modifier.width(6.dp))
-            Text("FixMoney • $APP_VERSION", style = t.numericSm, color = colors.textMuted)
+            Text("FixMoney v${appVersionName()}", style = t.numericSm, color = colors.textMuted)
         }
-        Spacer(Modifier.height(4.dp))
-        Text("Kotlin Multiplatform • Android & iOS", style = t.bodySm, color = colors.textMuted)
     }
 }
-
-/**
- * Kept in step with `versionName` in `composeApp/build.gradle.kts` by hand -
- * KMP has no `BuildConfig` in common code, and generating one for a footer
- * string is not worth a Gradle task.
- */
-private const val APP_VERSION = "v2.0 preview"
 
 private fun ordinal(day: Int): String {
     val suffix = when {

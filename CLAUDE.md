@@ -37,7 +37,7 @@ The old app's assets were copied once; `~/Downloads/Expense` is **not** read at 
 |---|---|---|
 | PNG / WebP | `composeApp/src/commonMain/composeResources/drawable/` | 26 |
 | Vector XML drawables | same | 24 |
-| Lottie JSON | `composeApp/src/commonMain/composeResources/files/lottie/` | 6 |
+| Lottie JSON | `composeApp/src/commonMain/composeResources/files/lottie/` | 7 |
 | Launcher icons (mipmaps) | `composeApp/src/androidMain/res/` — Android-only | 6 folders |
 
 **57 XML drawables were deliberately NOT copied.** They are `<shape>`, `<selector>` and `<layer-list>` backgrounds (`bg_*.xml`, ripples, chips), which compose-resources cannot read. Each becomes a Compose modifier at the point of use — `Modifier.background(color, RoundedCornerShape(...))`, `Modifier.border(...)` — so there is nothing to port ahead of time. Only `<vector>` XML travels.
@@ -1837,3 +1837,71 @@ after : SEARCH expenses USING INDEX index_expenses_date (date>? AND date<?)
 | Workers KV | 1,000 writes/day free - if the per-IP limiter is enabled it caps there; use Durable Objects or the rate-limiting binding at scale |
 | Per-device data | indexed and windowed; no longer tied to ledger lifetime |
 
+
+## QA pass + fixes for the next release (2026-10-11)
+
+Full report: `~/Downloads/FixMoney_Bug_Report_2026-10-11.md`. The fixes are **uncommitted on `feat/ai-coins-wallet`**, and the versionCode is still 13, so bump it to 14 before uploading.
+
+**C1, the one that matters most: every v10 → 2.1 updater crash-looped.** `LegacyImport` copied `expense.db` with the old app's `room_master_table` hash (`ac07dbd5…`), and Room 2.7 `checkIdentity` threw on every launch. Reproduced on the device with a DB built from the old `ExpenseDatabase_Impl` SQL. Fixed in two places:
+- The import drops `room_master_table`, so Room validates the schema and writes its own hash.
+- `repairLegacyIdentity()` drops it from an already-imported file that still carries the legacy hash. That rescues users who are stuck right now.
+
+Both paths are verified on the device. `pending_expenses` (the old offline queue) is imported too. **Ship this as a hotfix.** Check Play vitals for "cannot verify the data integrity".
+
+Decisions worth knowing:
+- `parseStoredAmount()` / `ExpenseEntity.amountValue` (`shared/db/ExpenseAmount.kt`) is the only way to read an amount. Never use `amount.toIntOrNull()`: old rows hold "12.50" and "₹1,250".
+- `MoneyFormat.currencyCode` (OnboardingParts.kt), set in App.kt, drives `formatIndian` and `compactAmount`. Lakh/crore only for INR, PKR, BDT, NPR and LKR.
+- AI JSON is decoded through `LenientAiJson` + `extractJsonObject` + `LenientIntSerializer`. The coin is already charged at that point, so a strict decode wasted it.
+- Fixoo's DATA block is scoped by month (this month plus last month, per currency). History is paired in order and capped at 6 turns.
+- The four tabs use `rememberToday()` / `rememberFollowingMonth()` (`ui/components/Today.kt`), so a midnight rollover refreshes them.
+- Navigation goes through `go(route)` (`launchSingleTop`), and `goBack` only pops when there is a previous entry.
+- Worker `premiumToRecheck` is throttled with `checkedAt`. **Not deployed.**
+
+Second pass, 2026-10-12, all fixed:
+- **Totals count only the profile's currency.** Use `ExpenseEntity.isIn()` / `inCurrency()`. Never sum rows of different currencies.
+- **Money formatting moved to `shared/model/MoneyFormat.kt`.** composeApp's `formatIndian` delegates to it.
+- **SIP maths moved to `shared/calc/SipMath.kt`.**
+- **CSV builder is top-level `buildExpenseCsv` / `csvField`.**
+- **The state factories take `todayOverride`** so tests can use a fixed date.
+- **Worker `PremiumTokenDO` (migration v3)** binds one account per Play token. **Not deployed.**
+- **Analytics scope tabs are in the pinned `sticky` header.**
+
+**UI tweaks (2026-10-12):** the app-bar bell is hidden behind `SHOW_NOTIFICATION_BELL = false` in `DesignScaffold.kt` (kept for future notifications). "FIXOO INSIGHT" (not Copilot) on Analytics. The scanner chip says "FIXOO RECEIPT SCAN". The Settings footer says "FixMoney v<version>". The scanner shutter now sits at bottom 22dp and `FRAME_HEIGHT_FRACTION` is 0.48, so the hint card no longer overlaps the shutter or frame.
+
+**Profile avatars (2026-10-12):** 9 claymation avatars from Stitch `stitch_fixmoney_fintech_app_design 10`, cropped to 256px WebP as `drawable/avatar_1..9`. `ui/settings/Avatars.kt` holds:
+- `ProfileAvatarOption`: the ids are stored, so **never reorder them**.
+- `CurrentAvatar`: app-wide state, so Home updates the moment an avatar is applied.
+- `ProfileAvatar`: falls back to the initial when none is picked.
+- `AvatarPickerSheet`: a simplified version of the `(20)` mockup. Preview, 3-column grid, Apply / Cancel; the "Claymation Studio" and verified-badge extras are dropped at the user's request.
+
+The choice is saved in `AppPrefs.avatarId()` (`profile_avatar`; 0 = initial). It shows in the Home app bar, the Settings card and Edit Profile (tap the avatar or its pencil badge). The dashboard tab is now `rememberSaveable`, so Back from Edit Profile / SIP returns to Settings instead of Home.
+
+**Portrait only (2026-10-12):** `MainActivity` has `android:screenOrientation="portrait"`; iOS Info.plist was already portrait-only. Checked on the device: the activity reports `SCREEN_ORIENTATION_PORTRAIT` with auto-rotate on.
+
+**Calculation tests:** 43 in `shared/src/commonTest` (fakes in `testutil/Fakes.kt`). Run with `./gradlew :shared:testDebugUnitTest`.
+
+## Known bugs in live 2.1: fix in the next release (found 2026-10-11 while capturing store screenshots)
+
+Plan agreed with the user: finish the store screenshots first, then a proper test pass, fix everything below, then release.
+
+1. **Fixoo answers "this month" questions with all-time data.** `shared/.../ai/ChatEngine.kt:21` builds the prompt from `expenses.getExpensesOnce()`: every row ever recorded, totals and per-category sums with no month scoping or labels. Seen: with Sep + Oct demo data, "How much did I spend on food this month?" → 12460 (Sep+Oct) instead of 5600 (Oct). Fix: scope to the current month (and say so in the prompt), and pass earlier months as labelled context if comparisons are needed.
+2. **Receipt scanner ignores the receipt's currency.** An Indian petrol bill reading "AMOUNT: 2598.61 INR", scanned with the app currency set to USD, became `$2,599`. Fix: detect the currency on the receipt; if it differs from the app currency, warn or convert rather than silently relabel.
+3. **Voice amount parsing, possible "for" → "4" merge.** "T-shirt" voice adds produced 5004 three times across two sessions (₹5004 twice, then $5004; 500 expected), while other attempts gave the correct 500. Likely "500 for T-shirt" transcribed as "500 4". Reproducible, but the exact spoken phrase is still unconfirmed. Reproduce before fixing (check how `VoiceExpenseParser` / the Groq prompt treats split number tokens).
+4. **Settings footer says "FixMoney • v2.0 preview"** while the shipped versionName is 2.1. Read the version from the build instead of hardcoding it.
+5. **Fixoo repeats itself.** When a second question was asked, the answer reused the previous answer's opening sentence ("You spent 5600 on food this month.") above an unrelated breakdown. Check how history is passed in `ChatEngine.ask`.
+
+## Fixoo orb logo (2026-10-12)
+- The Fixoo AI logo is the animated orb `files/lottie/fixoo_orb.json` in both places:
+  - Home "Ask Fixoo" button (HomeScreen.kt, `FeatureFlag.FixooChat`): 40dp tap area with a 32dp orb, clipped to a circle, opens `onAskAi`. It replaces the old `nd_sparkle_duo` icon, tinted circle and live dot.
+  - Chat header avatar (ChatScreen.kt): 42dp, clipped to a circle. It replaces `ai.json`, which is now unused.
+- Source: Stitch export folder (22), a WebGL glass-orb shader. Rendered in headless Chrome with the shader's outer **aura removed** (alpha only on the orb body), because the aura showed as a faint grey halo or square on the light theme.
+- 90 frames are crossfaded into a seamless 72-frame loop and cropped to the orb's bounds. They are packed as an image-sequence Lottie: 160px WebP data URIs, 24fps, about 440 KB. Compottie renders the embedded WebP fine (verified on the device).
+- Build script: `scratchpad/build_orb.py`, which is temporary. To regenerate, re-render the shader: a vector Lottie can't reproduce it.
+
+
+## Release 14 / 2.2 (built 2026-10-12, not yet submitted)
+- `versionCode` 14, `versionName` 2.2. It is the hotfix for the v10 → 2.1 Room identity crash loop, plus the whole QA bug pass, per-currency totals, avatars, the Fixoo orb and portrait lock.
+- Signed AAB: `composeApp/build/outputs/bundle/release/composeApp-release.aab` (~40 MB). Cert SHA-256 is `8E:62:...:F7:17`, the upload key. A copy plus the 21-language "What's new" text is in `~/Downloads/FixMoney_v2.2_release/`.
+- The user uploads the AAB by hand (it's over the Chrome tool's 10 MB limit) and submits it together with the pending listing and screenshot changes.
+- The release build was **not smoke-tested on the device**. The Play-signed install on the phone blocks `adb install` of a locally signed build. After rollout, check the Play-served build ([[verify against distributed artifact]]): first launch after the update from v10, Home orb animation (Compottie WebP under R8), voice add, receipt scan.
+- The Worker changes (premium recheck throttle, `PremiumTokenDO` migration v3) are committed but **not deployed**. The app doesn't depend on them.

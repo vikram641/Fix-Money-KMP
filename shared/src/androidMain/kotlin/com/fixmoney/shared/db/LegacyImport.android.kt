@@ -36,7 +36,10 @@ private const val LEGACY_DB_FILE = "expense.db"
  */
 internal fun adoptLegacyDatabaseIfPresent(context: Context) {
     val target = context.getDatabasePath(DB_FILE_NAME)
-    if (target.exists()) return
+    if (target.exists()) {
+        repairLegacyIdentity(target.absolutePath)
+        return
+    }
 
     val legacy = context.getDatabasePath(LEGACY_DB_FILE)
     if (!legacy.exists()) return
@@ -60,6 +63,13 @@ internal fun adoptLegacyDatabaseIfPresent(context: Context) {
             db.beginTransaction()
             try {
                 rebuildBudgets(db)
+                importPendingExpenses(db)
+                // The copy still carries the old app's identity hash. Room checks
+                // it on first open and throws "cannot verify the data integrity"
+                // - every launch, since fixmoney.db now exists and this never
+                // runs again. With the table gone Room validates the schema
+                // instead and writes its own hash.
+                db.execSQL("DROP TABLE IF EXISTS room_master_table")
                 // Indices this schema expects; Room validates their presence.
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_expenses_date` ON `expenses` (`date`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_expenses_updatedAt` ON `expenses` (`updatedAt`)")
@@ -78,6 +88,57 @@ internal fun adoptLegacyDatabaseIfPresent(context: Context) {
         logWarn(TAG, "legacy import failed, starting fresh: ${e.message}")
         runCatching { target.delete() }
     }
+}
+
+/** The old app's Room identity hash (`ExpenseDatabase_Impl`, schema v3). */
+private const val LEGACY_IDENTITY_HASH = "ac07dbd5ae44997d2da265c79bdc6482"
+
+/**
+ * Rescues installs that 2.1 already imported. 2.1 left the legacy identity hash
+ * in `room_master_table`, so Room crashes on every launch. Dropping the table
+ * lets Room re-validate the (already converted) schema and stamp its own hash.
+ * Only ever touches a file that still carries the legacy hash.
+ */
+private fun repairLegacyIdentity(path: String) {
+    try {
+        SQLiteDatabase.openDatabase(path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            val hasLegacyHash = runCatching {
+                db.rawQuery("SELECT identity_hash FROM room_master_table WHERE id = 42", null).use { c ->
+                    c.moveToFirst() && c.getString(0) == LEGACY_IDENTITY_HASH
+                }
+            }.getOrDefault(false)
+            if (hasLegacyHash) {
+                db.execSQL("DROP TABLE IF EXISTS room_master_table")
+                logWarn(TAG, "repaired legacy identity hash in $DB_FILE_NAME")
+            }
+        }
+    } catch (e: Exception) {
+        logWarn(TAG, "identity repair skipped: ${e.message}")
+    }
+}
+
+/**
+ * The old app queued expenses made offline in `pending_expenses` until they
+ * synced. Anything still queued at update time exists nowhere else, so it is
+ * carried into `expenses` rather than left behind.
+ */
+private fun importPendingExpenses(db: SQLiteDatabase) {
+    val hasTable = db.rawQuery(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='pending_expenses'", null
+    ).use { it.moveToFirst() }
+    if (!hasTable) return
+    db.execSQL(
+        """
+        INSERT OR IGNORE INTO `expenses`
+            (id, amount, currency, date, note, receiptUrl, createdAt, updatedAt,
+             isSynced, localCreatedAt, userId, categoryId, categoryName,
+             categoryColor, categoryIcon)
+        SELECT 'pending-' || localId, amount, currency, date, note, receiptUrl,
+               date, date, 0, createdAtLocal, '', categoryId, categoryName,
+               categoryColor, categoryIcon
+        FROM `pending_expenses`
+        """.trimIndent()
+    )
 }
 
 /**

@@ -1,11 +1,14 @@
 package com.fixmoney.shared.home
 
+import com.fixmoney.shared.db.amountValue
+
 import com.fixmoney.shared.db.ExpenseEntity
 import com.fixmoney.shared.platform.dayOfMonth
 import com.fixmoney.shared.platform.daysInMonth
 import com.fixmoney.shared.platform.isoToEpochDay
 import com.fixmoney.shared.platform.monthOf
 import com.fixmoney.shared.platform.plusDaysIso
+import com.fixmoney.shared.platform.daysBetween
 import com.fixmoney.shared.platform.todayIso
 
 /**
@@ -29,6 +32,9 @@ data class HomeInsight(
 
 private const val BASELINE_WEEKS = 3
 private const val MIN_PERCENT_INCREASE = 20
+
+/** Fewer weeks of history than this and a weekly average is noise. */
+private const val MIN_BASELINE_WEEKS = 2
 
 /**
  * Computed from local rows - **no AI call**, despite the card's name, so it is
@@ -85,7 +91,9 @@ object HomeInsightEngine {
         if (budget <= 0 || spent <= 0 || day <= 0) return null
         val dailyRate = spent.toDouble() / day
         val crossover = budget / dailyRate
-        return if (crossover > day && crossover < days) crossover.toInt() else null
+        // Rounded up: 11.4 on day 11 means the 12th, not "today".
+        val dayOut = kotlin.math.ceil(crossover).toInt()
+        return if (dayOut > day && dayOut <= days) dayOut else null
     }
 
     /** The category up the most against its own 3-week weekly average. */
@@ -94,9 +102,17 @@ object HomeInsightEngine {
         baseline: List<ExpenseEntity>
     ): Pair<String, Int>? {
         val currentByCategory = current.groupBy { it.categoryName }
-            .mapValues { (_, rows) -> rows.sumOf { it.amount.toIntOrNull() ?: 0 } }
+            .mapValues { (_, rows) -> rows.sumOf { it.amountValue } }
+        // Averaged over the baseline weeks that actually have data: a user who
+        // started ten days ago had their spend divided by three weeks, and every
+        // category read as "+200%".
+        val anchor = baseline.maxOfOrNull { it.date }
+        val weeksWithData = if (anchor == null) 0 else baseline
+            .mapNotNull { daysBetween(it.date, anchor)?.div(7) }
+            .toSet().size.coerceAtMost(BASELINE_WEEKS)
+        if (weeksWithData < MIN_BASELINE_WEEKS) return null
         val baselineWeeklyAverage = baseline.groupBy { it.categoryName }
-            .mapValues { (_, rows) -> rows.sumOf { it.amount.toIntOrNull() ?: 0 } / BASELINE_WEEKS }
+            .mapValues { (_, rows) -> rows.sumOf { it.amountValue } / weeksWithData }
 
         return currentByCategory.mapNotNull { (name, amount) ->
             val average = baselineWeeklyAverage[name] ?: return@mapNotNull null

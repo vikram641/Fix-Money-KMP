@@ -58,9 +58,20 @@ class VoiceQuickAddEngine(
             VoiceExpenseParser.parse(spokenText, names, wallet)
         } catch (e: AiBlockedException) {
             return VoiceAddResult.Blocked(e.gate)
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
         } catch (e: Exception) {
             logWarn(TAG, "voice parse failed: ${e.message}")
-            return VoiceAddResult.Failed(e.message ?: "couldn't reach the parser")
+            // The raw text ("Groq call failed: 429", "Timed out waiting for 20000 ms")
+            // used to reach the toast verbatim.
+            val msg = e.message.orEmpty()
+            return VoiceAddResult.Failed(
+                when {
+                    "429" in msg -> "too many requests right now, try again in a minute"
+                    "imed out" in msg || "timeout" in msg.lowercase() -> "that took too long, please try again"
+                    else -> "couldn't understand that right now"
+                }
+            )
         }
 
         if (parsed.amount <= 0) return VoiceAddResult.NoAmount(spokenText)
@@ -72,7 +83,6 @@ class VoiceQuickAddEngine(
         val category = parsed.category
             ?.let { name -> available.firstOrNull { it.name.equals(name, ignoreCase = true) } }
             ?: available.firstOrNull { it.name.equals("Other", ignoreCase = true) }
-            ?: available.lastOrNull()
             ?: return VoiceAddResult.Failed("no categories available")
 
         val currency = prefs.getCurrencyCode()
@@ -82,7 +92,7 @@ class VoiceQuickAddEngine(
             // The old app hardcoded "INR" here even though onboarding asks for a
             // currency; this respects the saved one, like Add Expense does.
             currency = currency,
-            dateIso = todayIso(),
+            dateIso = parsed.date ?: todayIso(),
             note = parsed.note.ifBlank { "Voice quick add" },
             category = category
         )

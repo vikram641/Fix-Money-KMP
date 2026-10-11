@@ -80,11 +80,12 @@ fun AnalyticsScreen(onAskAi: () -> Unit = {}) {
     val t = designType()
     val factory: AnalyticsStateFactory = koinInject()
 
-    var month by remember { mutableStateOf(currentMonthApi()) }
+    val today = com.fixmoney.ui.components.rememberToday()
+    var month by com.fixmoney.ui.components.rememberFollowingMonth(today)
     var scope by remember { mutableStateOf(AnalyticsScope.Month) }
     var showMonthPicker by remember { mutableStateOf(false) }
 
-    val flow = remember(month, scope) { factory.observe(month, scope) }
+    val flow = remember(month, scope, today) { factory.observe(month, scope) }
     val state by flow.collectAsStateWithLifecycle(
         remember(month, scope) { factory.build(anchorMonth = month, scope = scope) }
     )
@@ -117,7 +118,11 @@ fun AnalyticsScreen(onAskAi: () -> Unit = {}) {
                         LineIcon(Res.drawable.nd_chevron_down, colors.textMuted, 15.dp)
                     }
                 }
-                Spacer(Modifier.height(12.dp))
+                // Pinned with the title: the period switch stays reachable while
+                // the cards scroll underneath it.
+                Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 4.dp, bottom = 12.dp)) {
+                    ScopeTabs(scope) { scope = it }
+                }
             }
         },
         body = {
@@ -125,8 +130,6 @@ fun AnalyticsScreen(onAskAi: () -> Unit = {}) {
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                ScopeTabs(scope) { scope = it }
-
                 if (!state.hasData) {
                     EmptyAnalytics()
                 } else {
@@ -635,7 +638,7 @@ private fun CopilotCard(state: AnalyticsUiState, onAskAi: () -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             LineIcon(Res.drawable.nd_sparkle, colors.accent, 18.dp)
             Spacer(Modifier.width(7.dp))
-            Text("FIXOO COPILOT INSIGHT", style = t.labelCaps, color = colors.accent)
+            Text("FIXOO INSIGHT", style = t.labelCaps, color = colors.accent)
         }
         Spacer(Modifier.height(12.dp))
         Text(copilotText(state), style = t.bodyMd, color = colors.textPrimary)

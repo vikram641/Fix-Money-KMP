@@ -70,26 +70,7 @@ class ExpenseExporter(
         is ExportRange.Custom -> "FixMoney-${range.fromIso}-to-${range.toIso}.csv"
     }
 
-    internal fun buildCsv(expenses: List<ExpenseEntity>): String = buildString {
-        append("Date,Category,Amount,Currency,Note\n")
-        expenses.forEach { e ->
-            append(csvField(e.date)).append(',')
-            append(csvField(e.categoryName)).append(',')
-            append(csvField(e.amount)).append(',')
-            append(csvField(e.currency)).append(',')
-            append(csvField(e.note)).append('\n')
-        }
-    }
-
-    /**
-     * Standard CSV escaping - quote when the value holds a comma, quote or
-     * newline, and double up internal quotes. Notes are free text, so all three
-     * are reachable; carried over from the old exporter unchanged.
-     */
-    private fun csvField(value: String): String =
-        if (value.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) {
-            "\"${value.replace("\"", "\"\"")}\""
-        } else value
+    internal fun buildCsv(expenses: List<ExpenseEntity>): String = buildExpenseCsv(expenses)
 }
 
 /**
@@ -110,4 +91,29 @@ expect class ExportFileWriter {
      * then simply does not offer the action rather than failing on a tap.
      */
     fun open(location: ExportLocation): Boolean
+}
+
+internal fun buildExpenseCsv(expenses: List<ExpenseEntity>): String = buildString {
+    append("Date,Category,Amount,Currency,Note\n")
+    expenses.forEach { e ->
+        append(csvField(e.date)).append(',')
+        append(csvField(e.categoryName)).append(',')
+        append(csvField(e.amount)).append(',')
+        append(csvField(e.currency)).append(',')
+        append(csvField(e.note)).append('\n')
+    }
+}
+
+/**
+ * Standard CSV escaping - quote when the value holds a comma, quote or
+ * newline, and double up internal quotes. Notes are free text, so all three
+ * are reachable; carried over from the old exporter unchanged.
+ */
+internal fun csvField(raw: String): String {
+    // A note starting with = + - @ is run as a formula by Excel/Sheets
+    // ("=HYPERLINK(...)", OCR'd merchant text). A leading ' makes it text.
+    val value = if (raw.isNotEmpty() && raw[0] in "=+-@\t\r") "'$raw" else raw
+    return if (value.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) {
+        "\"${value.replace("\"", "\"\"")}\""
+    } else value
 }

@@ -32,7 +32,16 @@ interface Premium {
   productId: string;
   /** The Play purchase token, kept to re-verify on renewal. Never sent to the app. */
   token: string;
+  /** When Play was last asked about this token (epoch ms). */
+  checkedAt?: number;
 }
+
+/**
+ * How often an expired subscription is re-asked. Without this a lapsed
+ * subscriber's token was sent to Play on *every* /v1/wallet call (launch,
+ * precheck, seven polls per rewarded video) forever.
+ */
+const PREMIUM_RECHECK_MS = 12 * 60 * 60 * 1000;
 
 interface State {
   accountId: string;
@@ -327,9 +336,17 @@ export class WalletDO extends DurableObject<Env> {
     const s = await this.load();
     if (!s) return null;
     this.normalize(s, now);
-    s.premium = premium;
+    s.premium = { ...premium, checkedAt: now };
     await this.save(s);
     return this.view(s, now);
+  }
+
+  /** Drops Premium if it was granted by [token] (the token moved to another account). */
+  async clearPremium(token: string): Promise<void> {
+    const s = await this.load();
+    if (!s?.premium || s.premium.token !== token) return;
+    delete s.premium;
+    await this.save(s);
   }
 
   /**
@@ -340,7 +357,12 @@ export class WalletDO extends DurableObject<Env> {
   async premiumToRecheck(): Promise<{ token: string; productId: string } | null> {
     const s = await this.load();
     if (!s?.premium) return null;
-    if (s.premium.until > Date.now()) return null;
+    const now = Date.now();
+    if (s.premium.until > now) return null;
+    // Just expired: check right away (that is how a renewal is noticed). Long
+    // expired and already re-checked recently: wait.
+    const justExpired = s.premium.until > 0 && (s.premium.checkedAt ?? 0) < s.premium.until;
+    if (!justExpired && now - (s.premium.checkedAt ?? 0) < PREMIUM_RECHECK_MS) return null;
     return { token: s.premium.token, productId: s.premium.productId };
   }
 }

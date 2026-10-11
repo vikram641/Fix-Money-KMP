@@ -31,6 +31,8 @@ import { networkOf } from "./ipgate";
 export { WalletDO } from "./wallet";
 export { DeviceDO } from "./device";
 export { IpGateDO } from "./ipgate";
+export { PremiumTokenDO, tokenKey } from "./premiumtoken";
+import { tokenKey as hashToken } from "./premiumtoken";
 
 /**
  * Per-IP cap for the legacy (token-less) path only. Groq's free tier stops at
@@ -406,6 +408,17 @@ async function premiumVerify(request: Request, env: Env): Promise<Response> {
     cfg
   );
   if (!view) return err(401, "Unknown wallet - register again", "UNAUTHORIZED");
+
+  // One account at a time per token: the account it moves away from loses
+  // Premium, so a shared or leaked token cannot unlock many wallets at once.
+  if (env.PREMIUM_TOKEN) {
+    const key = await hashToken(purchaseToken);
+    const previous = await env.PREMIUM_TOKEN.get(env.PREMIUM_TOKEN.idFromName(key)).claim(accountId);
+    if (previous) {
+      await walletStub(env, previous).clearPremium(purchaseToken);
+      log("premium_moved", { from: short(previous), to: short(accountId) });
+    }
+  }
 
   if (ent.needsAcknowledge) {
     try {

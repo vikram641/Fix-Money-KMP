@@ -1,5 +1,7 @@
 package com.fixmoney.ui.expense
 
+import com.fixmoney.shared.db.amountValue
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -92,7 +94,7 @@ fun ExpenseDetailScreen(
                     .background(colors.surfaceCard).clickable(onClick = onBack),
                 contentAlignment = Alignment.Center
             ) {
-                LineIcon(Res.drawable.nd_arrow_left, colors.textPrimary, 19.dp)
+                LineIcon(Res.drawable.nd_arrow_left, colors.textPrimary, 19.dp, contentDescription = "Back")
             }
             Text(
                 "Expense Detail",
@@ -131,7 +133,7 @@ fun ExpenseDetailScreen(
             else -> {
                 val tint = categoryTint(row.categoryColor, row.categoryIcon, colors)
                 val symbol = CurrencyConstants.symbolFor(row.currency)
-                val amount = row.amount.toIntOrNull() ?: 0
+                val amount = row.amountValue
 
                 Column(
                     Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())

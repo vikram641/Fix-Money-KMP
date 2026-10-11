@@ -84,7 +84,7 @@ fun WalletScreen(onBack: () -> Unit) {
                     .clickable(onClick = onBack),
                 contentAlignment = Alignment.Center
             ) {
-                LineIcon(Res.drawable.nd_arrow_left, colors.textPrimary, 19.dp)
+                LineIcon(Res.drawable.nd_arrow_left, colors.textPrimary, 19.dp, contentDescription = "Back")
             }
             Spacer(Modifier.width(14.dp))
             Text("Fixoo Coins", style = t.headlineSm, color = colors.textPrimary, modifier = Modifier.weight(1f))

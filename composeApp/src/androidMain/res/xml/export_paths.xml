@@ -8,4 +8,11 @@
     <external-path
         name="exports"
         path="Download/FixMoney Exports/" />
+    <!-- API 24-28 without the storage grant: the app's own external folder. -->
+    <external-files-path
+        name="exports_app"
+        path="Download/FixMoney Exports/" />
+    <files-path
+        name="exports_internal"
+        path="exports/FixMoney Exports/" />
 </paths>

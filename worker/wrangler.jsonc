@@ -14,12 +14,14 @@
     "bindings": [
       { "name": "WALLET", "class_name": "WalletDO" },
       { "name": "DEVICE", "class_name": "DeviceDO" },
-      { "name": "IP_GATE", "class_name": "IpGateDO" }
+      { "name": "IP_GATE", "class_name": "IpGateDO" },
+      { "name": "PREMIUM_TOKEN", "class_name": "PremiumTokenDO" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["WalletDO", "DeviceDO"] },
-    { "tag": "v2", "new_sqlite_classes": ["IpGateDO"] }
+    { "tag": "v2", "new_sqlite_classes": ["IpGateDO"] },
+    { "tag": "v3", "new_sqlite_classes": ["PremiumTokenDO"] }
   ],
 
   // The coin economy. These are the *defaults*: any field present in the

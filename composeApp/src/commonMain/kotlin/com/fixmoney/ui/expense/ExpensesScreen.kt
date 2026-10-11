@@ -1,5 +1,9 @@
 package com.fixmoney.ui.expense
 
+import com.fixmoney.shared.db.inCurrency
+
+import com.fixmoney.shared.db.amountValue
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -83,10 +87,12 @@ fun ExpensesScreen(
     val prefs: OnboardingPrefs = koinInject()
     val repo: ExpenseRepository = koinInject()
 
-    val symbol = remember { CurrencyConstants.symbolFor(prefs.getCurrencyCode()) }
+    val profileCurrency = remember { prefs.getCurrencyCode() }
+    val symbol = remember { CurrencyConstants.symbolFor(profileCurrency) }
     val all by repo.observeExpenses().collectAsStateWithLifecycle(emptyList())
 
-    var month by remember { mutableStateOf(currentMonthApi()) }
+    val today = com.fixmoney.ui.components.rememberToday()
+    var month by com.fixmoney.ui.components.rememberFollowingMonth(today)
     var monthScope by remember { mutableStateOf(true) }
     var showMonthPicker by remember { mutableStateOf(false) }
     var showExport by remember { mutableStateOf(false) }
@@ -103,9 +109,10 @@ fun ExpensesScreen(
         all.filter { it.date.startsWith(shiftMonth(month, -1)) }
     }
 
-    val total = inScope.sumOf { it.amountInt }
-    val previousTotal = previous.sumOf { it.amountInt }
-    val breakdown = remember(inScope) { categoryTotals(inScope) }
+    // Totals in the profile's currency only; each row still lists in its own.
+    val total = inScope.inCurrency(profileCurrency).sumOf { it.amountInt }
+    val previousTotal = previous.inCurrency(profileCurrency).sumOf { it.amountInt }
+    val breakdown = remember(inScope) { categoryTotals(inScope.inCurrency(profileCurrency)) }
 
     val visible = inScope.filter { row ->
         (filter == ALL_FILTER || row.categoryName == filter) &&
@@ -490,7 +497,7 @@ private fun DayGroup(
             Spacer(Modifier.weight(1f))
             Text("Total: ", style = t.numericSm, color = colors.textMuted)
             Text(
-                "$symbol${formatIndian(rows.sumOf { it.amountInt })}",
+                "$symbol${formatIndian(rows.filter { it.currency.isBlank() || CurrencyConstants.symbolFor(it.currency) == symbol }.sumOf { it.amountInt })}",
                 style = t.numericSm,
                 color = colors.textPrimary
             )
@@ -563,7 +570,8 @@ private fun ExpenseRow(expense: ExpenseEntity, symbol: String, onClick: () -> Un
         }
         Spacer(Modifier.width(10.dp))
         Text(
-            "-$symbol${formatIndian(expense.amountInt)}",
+            // The row's own currency: a ₹ expense on a $ profile is still ₹.
+            "-${expense.currency.takeIf { it.isNotBlank() }?.let { CurrencyConstants.symbolFor(it) } ?: symbol}${formatIndian(expense.amountInt)}",
             style = t.numericMd.copy(fontWeight = FontWeight.Bold),
             color = colors.textPrimary
         )
@@ -653,7 +661,7 @@ private fun Footer(count: Int, onExport: () -> Unit) {
 private const val ALL_FILTER = "All"
 
 /** The amount column is a string in the old schema; everything here wants an Int. */
-internal val ExpenseEntity.amountInt: Int get() = amount.toIntOrNull() ?: 0
+internal val ExpenseEntity.amountInt: Int get() = amountValue
 
 /** One category's share of the period, biggest first. */
 internal data class CategoryTotal(

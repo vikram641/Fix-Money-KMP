@@ -50,7 +50,6 @@ class LocalVoiceParserTest {
             "500 at the new place downtown", // nothing names a category
             "200 coffee auto",           // two categories
             "yesterday 150 coffee",      // a date the model must read
-            "0 coffee"
         ).forEach { assertEquals(Result.Unsure, LocalVoiceParser.parse(it, names), it) }
     }
 

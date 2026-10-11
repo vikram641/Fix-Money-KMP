@@ -151,7 +151,7 @@ fun ChatScreen(onBack: () -> Unit) {
     val listState = rememberLazyListState()
 
     val avatar by rememberLottieComposition {
-        LottieCompositionSpec.JsonString(Res.readBytes("files/lottie/ai.json").decodeToString())
+        LottieCompositionSpec.JsonString(Res.readBytes("files/lottie/fixoo_orb.json").decodeToString())
     }
 
     LaunchedEffect(messages.size, thinking) {
@@ -161,12 +161,22 @@ fun ChatScreen(onBack: () -> Unit) {
 
     fun send(question: String) {
         if (question.isBlank() || thinking) return
+        // Built before the new question is added, pairing each question with the
+        // reply that follows it. The old zip of "all replies" with "all questions"
+        // was off by one (the greeting is a reply with no question), so the model
+        // was told it had already answered the *current* question with the
+        // previous answer - and repeated that answer's opening line.
+        val history = buildList {
+            var pending: String? = null
+            for (m in messages) {
+                if (m.fromUser) pending = m.text
+                else pending?.let { add(it to m.text); pending = null }
+            }
+        }
         messages += Message(question, fromUser = true, timeLabel = currentTimeLabel())
         input = ""
         thinking = true
         scope.launch {
-            val history = messages.filter { !it.fromUser }.zip(messages.filter { it.fromUser })
-                .map { (a, q) -> q.text to a.text }
             val reply = when (val result = engine.ask(question, history)) {
                 is ChatAskResult.Success -> Message(
                     result.answer.text,
@@ -214,7 +224,9 @@ fun ChatScreen(onBack: () -> Unit) {
                 Image(
                     painter = rememberLottiePainter(avatar, iterations = Compottie.IterateForever),
                     contentDescription = null,
-                    modifier = Modifier.size(42.dp)
+                    // Clipped like Home's orb button: the orb's aura reaches the
+                    // frame edge and shows as a faint square on the light theme.
+                    modifier = Modifier.size(42.dp).clip(CircleShape)
                 )
             },
             canReset = messages.size > 1 && !thinking,
@@ -299,7 +311,7 @@ private fun ChatHeader(
                     .clickable(onClick = onBack),
                 contentAlignment = Alignment.Center
             ) {
-                LineIcon(Res.drawable.nd_arrow_left, colors.textPrimary, 19.dp)
+                LineIcon(Res.drawable.nd_arrow_left, colors.textPrimary, 19.dp, contentDescription = "Back")
             }
             Spacer(Modifier.width(12.dp))
             avatarPainter()

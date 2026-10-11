@@ -42,7 +42,12 @@ class AppPrefs(private val settings: Settings) {
     fun insightFrequency(): String = settings.getStringOrNull(KEY_INSIGHT_FREQ) ?: "Daily briefing"
     fun setInsightFrequency(value: String) = settings.putString(KEY_INSIGHT_FREQ, value)
 
+    /** The chosen profile avatar (1-based), or 0 for the initial-letter avatar. */
+    fun avatarId(): Int = settings.getInt(KEY_AVATAR, 0)
+    fun setAvatarId(id: Int) = settings.putInt(KEY_AVATAR, id.coerceAtLeast(0))
+
     private companion object {
+        const val KEY_AVATAR = "profile_avatar"
         const val KEY_DARK = "dark_mode"
         const val KEY_ALERTS = "budget_alerts"
         const val KEY_VOICE = "voice_bubble"

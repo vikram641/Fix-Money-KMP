@@ -1,5 +1,10 @@
 package com.fixmoney.shared.home
 
+import com.fixmoney.shared.db.inCurrency
+import com.fixmoney.shared.db.isIn
+
+import com.fixmoney.shared.db.amountValue
+
 import com.fixmoney.shared.db.BudgetDao
 import com.fixmoney.shared.db.ExpenseEntity
 import com.fixmoney.shared.expense.ExpenseRepository
@@ -50,7 +55,9 @@ data class HomeUiState(
     val daysLeft: Int = 0,
     /** Spend so far divided by days elapsed - the hero card's "Daily avg". */
     val dailyAverage: Int = 0,
-    val recent: List<RecentExpense> = emptyList()
+    val recent: List<RecentExpense> = emptyList(),
+    /** This month's expenses recorded in another currency, left out of the totals. */
+    val otherCurrencyCount: Int = 0
 ) {
     val remaining: Int get() = (totalBudget - totalSpent).coerceAtLeast(0)
 
@@ -142,20 +149,29 @@ class HomeStateFactory(
         }
 
     fun build(
-        allRows: List<ExpenseEntity> = emptyList(),
+        allRowsAnyCurrency: List<ExpenseEntity> = emptyList(),
         month: String = currentMonthApi(),
-        budgetTotal: Int = 0
+        budgetTotal: Int = 0,
+        /** Injectable so calculations can be tested against a fixed date. */
+        todayOverride: String? = null
     ): HomeUiState {
         val name = prefs.getUserName()
+        // Only the profile's currency is added up; see ExpenseEntity.isIn.
+        val profileCurrency = prefs.getCurrencyCode()
+        val allRows = allRowsAnyCurrency.inCurrency(profileCurrency)
+        val otherCurrencyCount = allRowsAnyCurrency
+            .count { it.date.startsWith(month) && !it.isIn(profileCurrency) }
         val rows = allRows.filter { it.date.startsWith(month) }
-        val spent = rows.sumOf { it.amount.toIntOrNull() ?: 0 }
+        val spent = rows.sumOf { it.amountValue }
 
         // The last 7 days including today, which is what the old Home's "This
         // Week" tile meant. It read 0 until now only because there was no date
         // arithmetic to express the window - see `platform/DateMath.kt`.
-        val today = todayIso()
+        val today = todayOverride ?: todayIso()
         val week = if (monthOf(today) == month) {
-            rows.inRange(plusDaysIso(today, -6), today).sumOf { it.amount.toIntOrNull() ?: 0 }
+            // allRows, not this month's rows: on the 3rd, the 27th-30th of last
+            // month are still in "the last 7 days".
+            allRows.inRange(plusDaysIso(today, -6), today).sumOf { it.amountValue }
         } else {
             // Looking at another month: "this week" has no meaning there, and
             // showing the current week's figure beside that month's total would
@@ -168,7 +184,7 @@ class HomeStateFactory(
         val slices = rows
             .groupBy { it.categoryName }
             .map { (name, group) ->
-                val amount = group.sumOf { it.amount.toIntOrNull() ?: 0 }
+                val amount = group.sumOf { it.amountValue }
                 CategorySlice(
                     name = name,
                     colorHex = group.first().categoryColor,
@@ -194,8 +210,18 @@ class HomeStateFactory(
         // be nonsense, so they read 0 and the card says "Month closed".
         val isCurrentMonth = monthOf(today) == month
         val totalDays = daysInMonth(month)
-        val elapsed = if (isCurrentMonth) dayOfMonth(today) else totalDays
-        val left = (totalDays - elapsed).coerceAtLeast(0)
+        val isFutureMonth = month > monthOf(today)
+        val elapsed = when {
+            isCurrentMonth -> dayOfMonth(today)
+            isFutureMonth -> 0
+            else -> totalDays
+        }
+        // Today still counts: on the 31st one day is left, not "Month closed".
+        val left = when {
+            isCurrentMonth -> totalDays - elapsed + 1
+            isFutureMonth -> totalDays
+            else -> 0
+        }
         val perDay = if (elapsed > 0) spent / elapsed else 0
 
         val recent = rows
@@ -211,7 +237,7 @@ class HomeStateFactory(
                     categoryColor = row.categoryColor,
                     categoryIcon = row.categoryIcon,
                     dateIso = row.date,
-                    amount = row.amount.toIntOrNull() ?: 0
+                    amount = row.amountValue
                 )
             }
 
@@ -234,7 +260,8 @@ class HomeStateFactory(
             } else null,
             daysLeft = if (isCurrentMonth) left else 0,
             dailyAverage = perDay,
-            recent = recent
+            recent = recent,
+            otherCurrencyCount = otherCurrencyCount
         ).also { it.monthElapsedPercent = (elapsed * 100) / totalDays }
     }
 

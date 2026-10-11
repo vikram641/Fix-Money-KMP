@@ -66,6 +66,8 @@ object GroqChatAssistant {
         } catch (e: TimeoutCancellationException) {
             logWarn(TAG, "ask timed out: ${e.message}")
             ChatAskResult.Failure
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e // leaving the screen must cancel the call, not report a failure
         } catch (e: Exception) {
             logWarn(TAG, "ask failed: ${e.message}")
             ChatAskResult.Failure
@@ -82,7 +84,7 @@ object GroqChatAssistant {
         val ticket = wallet?.ticket(AiFeature.Fixoo)
         val systemPrompt =
             "You are the AI assistant inside FixMoney, a personal expense-tracking app. " +
-                    "You have three jobs:\n\n" + "Founder of this App is Vikram Singh" +
+                    "You have three jobs:\n\n" + "Founder of this App is Vikram Singh.\n\n" +
                     "JOB 1 - Spending questions: Answer questions about the user's own spending " +
                     "using ONLY the DATA below - never invent a number that isn't derivable from " +
                     "it, and say so plainly if the data doesn't cover what they asked. Amounts " +
@@ -167,7 +169,12 @@ object GroqChatAssistant {
             ?.takeIf { it.isNotBlank() }
             ?: return ChatAskResult.Failure
 
-        val answer = json.decodeFromString<GroqAnswerPayload>(content)
+        val answer = runCatching {
+            LenientAiJson.decodeFromString<GroqAnswerPayload>(extractJsonObject(content))
+        }.getOrElse {
+            // Charged already; show the text rather than an error.
+            GroqAnswerPayload(answer = content.trim().take(1200))
+        }
 
         return ChatAskResult.Success(
             ChatAnswer(
@@ -203,10 +210,13 @@ private data class GroqChoice(val message: GroqMessage? = null)
 
 /** The model's own JSON reply, parsed out of [GroqChoice.message]'s content string. */
 @Serializable
-private data class GroqAnswerPayload(
+internal data class GroqAnswerPayload(
     val answer: String? = null,
     val categories: List<GroqCategory> = emptyList()
 )
 
 @Serializable
-private data class GroqCategory(val name: String? = null, val amount: Int = 0)
+internal data class GroqCategory(
+    val name: String? = null,
+    @Serializable(with = LenientIntSerializer::class) val amount: Int = 0
+)

@@ -113,8 +113,10 @@ android {
         // `specialUse` to `microphone`; Play will not take a version code twice,
         // even from a discarded draft. 12 is on Play too (installed from Play
         // 2026-10-06); 13 adds Fixoo Coins, real rewarded ads and Premium.
-        versionCode = 13
-        versionName = "2.1"
+        // 14 is the 2.2 hotfix: the v10 -> 2.1 Room identity crash loop, the
+        // QA bug pass, per-currency totals, avatars and the Fixoo orb.
+        versionCode = 14
+        versionName = "2.2"
     }
 
     buildTypes {

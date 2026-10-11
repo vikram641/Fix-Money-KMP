@@ -31,6 +31,8 @@ import com.fixmoney.ui.Design
 import com.fixmoney.ui.components.LineIcon
 import com.fixmoney.ui.designType
 import com.fixmoney.ui.onboarding.formatIndian
+import com.fixmoney.ui.onboarding.formatGrouped
+import androidx.compose.ui.focus.onFocusChanged
 import org.jetbrains.compose.resources.DrawableResource
 import org.koin.compose.koinInject
 import kotlin.math.pow
@@ -66,20 +68,12 @@ fun SipCalculatorScreen(onBack: () -> Unit) {
 
     val amount = monthly.toInt()
     val period = years.toInt()
-    val months = period * 12
-    val monthlyRate = ratePercent / 12.0 / 100.0
-
-    val future = when {
-        amount <= 0 || months <= 0 -> 0L
-        monthlyRate == 0.0 -> amount.toLong() * months
-        else -> {
-            val growth = (1 + monthlyRate).pow(months)
-            (amount * ((growth - 1) / monthlyRate) * (1 + monthlyRate)).toLong()
-        }
-    }
-    val invested = amount.toLong() * months
-    val returns = (future - invested).coerceAtLeast(0)
-    val gainPercent = if (invested <= 0) 0 else ((returns * 100) / invested).toInt()
+    // The maths lives in shared/calc/SipMath.kt, where it is unit-tested.
+    val projection = com.fixmoney.shared.calc.sipProjection(amount, ratePercent.toDouble(), period)
+    val future = projection.futureValue
+    val invested = projection.invested
+    val returns = projection.returns
+    val gainPercent = projection.gainPercent
     val investedShare = if (future <= 0) 0f else (invested.toFloat() / future)
 
     Column(Modifier.fillMaxSize().background(colors.surface)) {
@@ -93,7 +87,7 @@ fun SipCalculatorScreen(onBack: () -> Unit) {
                     .clickable(onClick = onBack),
                 contentAlignment = Alignment.Center
             ) {
-                LineIcon(Res.drawable.nd_arrow_left, colors.textPrimary, 19.dp)
+                LineIcon(Res.drawable.nd_arrow_left, colors.textPrimary, 19.dp, contentDescription = "Back")
             }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
@@ -125,7 +119,7 @@ fun SipCalculatorScreen(onBack: () -> Unit) {
                 Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
-                        "$symbol${formatIndian(future.toInt())}",
+                        "$symbol${formatGrouped(future)}",
                         style = t.displayHero.copy(fontSize = 30.sp),
                         color = colors.textPrimary
                     )
@@ -164,13 +158,13 @@ fun SipCalculatorScreen(onBack: () -> Unit) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     SplitTile(
                         "INVESTED",
-                        "$symbol${formatIndian(invested.toInt())}",
+                        "$symbol${formatGrouped(invested)}",
                         colors.accentStrong,
                         Modifier.weight(1f)
                     )
                     SplitTile(
                         "EST. RETURNS",
-                        "$symbol${formatIndian(returns.toInt())}",
+                        "$symbol${formatGrouped(returns)}",
                         colors.positive,
                         Modifier.weight(1f)
                     )
@@ -330,14 +324,27 @@ private fun ParameterCard(
                 Text(it, style = t.titleMd, color = colors.textMuted)
                 Spacer(Modifier.width(6.dp))
             }
+            // Local text, so clearing the field to retype is possible: deriving it
+            // from the value snapped an empty field straight back to "1", and typing
+            // "8" then gave "18". The value only moves on a non-empty entry, and the
+            // field shows the clamped value again once focus leaves.
+            var text by remember { mutableStateOf(valueText) }
+            var focused by remember { mutableStateOf(false) }
+            LaunchedEffect(valueText) { if (!focused) text = valueText }
             BasicTextField(
-                value = valueText,
-                onValueChange = { onText(it.filter { c -> c.isDigit() }.take(7)) },
+                value = text,
+                onValueChange = {
+                    text = it.filter { c -> c.isDigit() }.take(7)
+                    if (text.isNotEmpty()) onText(text)
+                },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 textStyle = t.headlineSm.copy(color = colors.textPrimary),
                 cursorBrush = SolidColor(colors.accent),
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f).onFocusChanged {
+                    focused = it.isFocused
+                    if (!it.isFocused) text = valueText
+                }
             )
             suffix?.let { Text(it, style = t.numericSm, color = colors.textMuted) }
         }

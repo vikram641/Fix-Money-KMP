@@ -29,15 +29,27 @@ actual class ExportFileWriter(private val context: Context) {
 
     actual suspend fun write(fileName: String, csv: String): ExportLocation =
         withContext(Dispatchers.IO) {
-            val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                writeViaMediaStore(fileName, csv)
-            } else {
-                writeViaLegacyFile(fileName, csv)
+            when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
+                    val uri = writeViaMediaStore(fileName, csv)
+                    // MediaStore renames a clash to "FixMoney-2026-10 (1).csv"; tell
+                    // the user the name the file actually got.
+                    val actual = displayNameOf(uri) ?: fileName
+                    ExportLocation(display = "Downloads/$EXPORT_DIR/$actual", handle = uri.toString())
+                }
+                // API 24-28 needs WRITE_EXTERNAL_STORAGE for the public folder, and
+                // nothing ever requested it, so every export failed there. Without
+                // the grant, write to the app's own external folder (no permission
+                // needed) and hand it out through the provider.
+                hasLegacyWritePermission() -> ExportLocation(
+                    display = "Downloads/$EXPORT_DIR/$fileName",
+                    handle = writeViaLegacyFile(fileName, csv).toString()
+                )
+                else -> ExportLocation(
+                    display = "Android/data/${context.packageName}/files/Download/$EXPORT_DIR/$fileName",
+                    handle = writeViaAppFolder(fileName, csv).toString()
+                )
             }
-            ExportLocation(
-                display = "Downloads/$EXPORT_DIR/$fileName",
-                handle = uri.toString()
-            )
         }
 
     /**
@@ -78,6 +90,26 @@ actual class ExportFileWriter(private val context: Context) {
         resolver.openOutputStream(uri)?.use { it.write(csv.toByteArray()) }
             ?: error("Could not open the export file for writing")
         return uri
+    }
+
+    private fun displayNameOf(uri: Uri): String? = runCatching {
+        context.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)
+            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+    }.getOrNull()
+
+    private fun hasLegacyWritePermission(): Boolean =
+        androidx.core.content.ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    private fun writeViaAppFolder(fileName: String, csv: String): Uri {
+        val base = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?: File(context.filesDir, "exports")
+        val dir = File(base, EXPORT_DIR)
+        if (!dir.exists() && !dir.mkdirs()) error("Could not create ${dir.path}")
+        val file = File(dir, fileName)
+        FileOutputStream(file).use { it.write(csv.toByteArray()) }
+        return FileProvider.getUriForFile(context, "${context.packageName}.exports", file)
     }
 
     private fun writeViaLegacyFile(fileName: String, csv: String): Uri {

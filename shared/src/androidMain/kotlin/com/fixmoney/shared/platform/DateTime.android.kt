@@ -26,3 +26,6 @@ actual fun currentTimeLabel(): String =
 
 actual fun timeLabelOf(epochMillis: Long): String =
     SimpleDateFormat("h:mm a", Locale.getDefault()).format(java.util.Date(epochMillis))
+
+actual fun dateIsoOf(epochMillis: Long): String =
+    SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date(epochMillis))

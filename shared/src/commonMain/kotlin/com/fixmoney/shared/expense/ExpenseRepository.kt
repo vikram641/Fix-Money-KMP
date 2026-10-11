@@ -32,10 +32,10 @@ class ExpenseRepository(private val dao: ExpenseDao) {
         val now = currentTimeMillis()
         dao.insertExpense(
             ExpenseEntity(
-                // No UUID in common Kotlin; the timestamp plus the category is
-                // unique enough for a local row, and the server assigned real
-                // ids in the old app anyway.
-                id = "local-$now",
+                // No UUID in common Kotlin. The millisecond alone collided when two
+                // saves landed together (voice bubble + manual), and REPLACE then
+                // silently overwrote one, so a random suffix rides along.
+                id = "local-$now-${kotlin.random.Random.nextLong().toULong().toString(36)}",
                 // Stored as a string, as the old schema did.
                 amount = amount.toString(),
                 currency = currency,

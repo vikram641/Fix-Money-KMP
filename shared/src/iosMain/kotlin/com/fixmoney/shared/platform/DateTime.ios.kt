@@ -48,3 +48,11 @@ actual fun timeLabelOf(epochMillis: Long): String {
     val date = NSDate.dateWithTimeIntervalSince1970(epochMillis / 1000.0 as NSTimeInterval)
     return formatter.stringFromDate(date)
 }
+
+actual fun dateIsoOf(epochMillis: Long): String {
+    val formatter = NSDateFormatter()
+    formatter.locale = platform.Foundation.NSLocale(localeIdentifier = "en_US_POSIX")
+    formatter.dateFormat = "yyyy-MM-dd"
+    val date = NSDate.dateWithTimeIntervalSince1970(epochMillis / 1000.0 as NSTimeInterval)
+    return formatter.stringFromDate(date)
+}

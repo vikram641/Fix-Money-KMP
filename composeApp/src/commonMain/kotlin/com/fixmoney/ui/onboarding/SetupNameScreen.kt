@@ -105,14 +105,14 @@ fun SetupNameScreen(
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                 if (state.name.isEmpty()) {
                     Text(
-                        "e.g. Vikram Singh",
+                        "Enter your name",
                         style = t.titleMd.copy(fontSize = 17.sp),
                         color = colors.textMuted
                     )
                 }
                 BasicTextField(
                     value = state.name,
-                    onValueChange = { state.name = it },
+                    onValueChange = { state.name = it.take(MAX_NAME_LENGTH) },
                     singleLine = true,
                     textStyle = LocalTextStyle.current.merge(
                         t.titleMd.copy(fontSize = 17.sp, color = colors.textPrimary)

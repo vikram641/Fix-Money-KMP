@@ -112,9 +112,14 @@ class CoinsController(
      */
     fun watchVideo() {
         val launcher = ads ?: return
-        val before = repo.wallet.value?.coins ?: 0
         sheet = CoinSheet.Reward(RewardState.Loading)
         scope.launch {
+            // Fresh numbers before the video, not the cached ones: a delayed reward
+            // from an earlier video landing during this poll was reported as this
+            // video's, with the wrong before -> after.
+            val fresh = repo.refresh() ?: repo.wallet.value
+            val before = fresh?.coins ?: 0
+            val adsLeftBefore = fresh?.adsLeftToday
             val account = repo.accountId ?: run { repo.ensureRegistered(); repo.accountId }
             if (account == null) {
                 sheet = CoinSheet.Reward(RewardState.Failed("Couldn't reach FixMoney. Check your connection and try again."))
@@ -125,12 +130,19 @@ class CoinsController(
                     AdResult.Earned -> {
                         sheet = CoinSheet.Reward(RewardState.Pending)
                         scope.launch {
-                            val landed = repo.awaitReward(before)
+                            val landed = repo.awaitReward(before, adsLeftBefore)
                             val after = repo.wallet.value?.coins ?: before
                             // Only replace the sheet if the user is still looking at it.
                             if (sheet == CoinSheet.Reward(RewardState.Pending)) {
+                                val capReached = !landed && adsLeftBefore != null && adsLeftBefore <= 0
                                 sheet = CoinSheet.Reward(
-                                    if (landed) RewardState.Credited(before, after) else RewardState.Delayed
+                                    when {
+                                        landed -> RewardState.Credited(before, after)
+                                        // Over the daily cap nothing will arrive later;
+                                        // "Delayed" promised coins that never came.
+                                        capReached -> RewardState.Failed("You've reached today's video limit. Come back tomorrow for more coins.")
+                                        else -> RewardState.Delayed
+                                    }
                                 )
                             }
                         }

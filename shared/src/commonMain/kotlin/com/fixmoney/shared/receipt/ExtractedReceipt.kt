@@ -20,5 +20,7 @@ data class ExtractedReceipt(
     val date: String? = null,
     val note: String? = null,
     val category: String? = null,
+    /** ISO 4217 code printed on the receipt, if the model could tell. */
+    val currency: String? = null,
     val status: ReceiptImageStatus = ReceiptImageStatus.OK
 )

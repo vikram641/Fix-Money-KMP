@@ -66,6 +66,7 @@
         <activity
             android:name="com.fixmoney.MainActivity"
             android:launchMode="singleTask"
+            android:screenOrientation="portrait"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">

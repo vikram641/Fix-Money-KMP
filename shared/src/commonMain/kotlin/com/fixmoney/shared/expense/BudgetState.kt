@@ -91,13 +91,24 @@ class BudgetStateFactory(
 
     fun build(
         envelopes: List<BudgetProgress> = emptyList(),
-        month: String = currentMonthApi()
+        month: String = currentMonthApi(),
+        todayOverride: String? = null
     ): BudgetUiState {
-        val today = todayIso()
+        val today = todayOverride ?: todayIso()
         val isCurrent = monthOf(today) == month
         val totalDays = daysInMonth(month)
-        val elapsed = if (isCurrent) dayOfMonth(today) else totalDays
-        val daysLeft = (totalDays - elapsed).coerceAtLeast(0)
+        // A month still to come has not started; one in progress still has today.
+        val isFuture = month > monthOf(today)
+        val elapsed = when {
+            isCurrent -> dayOfMonth(today)
+            isFuture -> 0
+            else -> totalDays
+        }
+        val daysLeft = when {
+            isCurrent -> totalDays - elapsed + 1
+            isFuture -> totalDays
+            else -> 0
+        }
 
         val ranked = envelopes.sortedByDescending { it.rawPercent }
 

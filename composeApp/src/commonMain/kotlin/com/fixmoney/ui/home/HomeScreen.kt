@@ -1,5 +1,13 @@
 package com.fixmoney.ui.home
 
+import io.github.alexzhirkevich.compottie.rememberLottiePainter
+
+import io.github.alexzhirkevich.compottie.rememberLottieComposition
+
+import io.github.alexzhirkevich.compottie.LottieCompositionSpec
+
+import io.github.alexzhirkevich.compottie.Compottie
+
 import androidx.compose.runtime.collectAsState
 import com.fixmoney.ui.coins.CoinChip
 import com.fixmoney.ui.coins.LocalCoins
@@ -106,10 +114,11 @@ fun HomeScreen(
     val colors = Design.colors
     val t = designType()
     val factory: HomeStateFactory = koinInject()
-    var month by remember { mutableStateOf(currentMonthApi()) }
+    val today = com.fixmoney.ui.components.rememberToday()
+    var month by com.fixmoney.ui.components.rememberFollowingMonth(today)
     var showMonthPicker by remember { mutableStateOf(false) }
 
-    val flow = remember(month) { factory.observe(month) }
+    val flow = remember(month, today) { factory.observe(month) }
     val state by flow.collectAsStateWithLifecycle(remember(month) { factory.build(month = month) })
 
     // The FAB gets out of the way while reading down the page and comes back on
@@ -245,17 +254,20 @@ private fun GreetingRow(
         }
         if (isEnabled(FeatureFlag.FixooChat)) {
             Spacer(Modifier.width(8.dp))
+            // Fixoo's mark: the animated orb from the Stitch design (22), rendered
+            // from its shader into an image-sequence Lottie (files/lottie/fixoo_orb.json).
+            val orb by rememberLottieComposition {
+                LottieCompositionSpec.JsonString(Res.readBytes("files/lottie/fixoo_orb.json").decodeToString())
+            }
             Box(
-                modifier = Modifier.size(40.dp).clip(CircleShape)
-                    .background(colors.accent.copy(alpha = 0.15f))
-                    .clickable(onClick = onAskAi),
+                modifier = Modifier.size(40.dp).clip(CircleShape).clickable(onClick = onAskAi),
                 contentAlignment = Alignment.Center
             ) {
-                LineIcon(Res.drawable.nd_sparkle_duo, colors.accent, 20.dp)
-                // The mockup's "live" dot, top-right of the button.
-                Box(
-                    Modifier.align(Alignment.TopEnd).padding(8.dp)
-                        .size(7.dp).clip(CircleShape).background(colors.accent)
+                Image(
+                    painter = rememberLottiePainter(orb, iterations = Compottie.IterateForever),
+                    contentDescription = "Ask Fixoo",
+                    // Smaller than the 40dp tap area, which stays the same.
+                    modifier = Modifier.size(32.dp).clip(CircleShape)
                 )
             }
         }
@@ -543,6 +555,9 @@ private fun InsightCardNew(state: HomeUiState, modifier: Modifier, onAskAi: () -
 }
 
 private fun insightHeadline(category: String?, percent: Int?): String = when {
+    // "Food is up 8772006%" read as a bug; past 10x the exact figure is noise.
+    category != null && percent != null && percent > 999 ->
+        "$category is more than 10x your 3-week average."
     category != null && percent != null -> "$category is up $percent% vs your 3-week average."
     else -> "You're on track to exceed your budget this month."
 }
@@ -570,6 +585,14 @@ private fun RecentSection(
                 modifier = Modifier.clip(RoundedCornerShape(8.dp))
                     .clickable(onClick = onSeeAll)
                     .padding(horizontal = 4.dp, vertical = 4.dp)
+            )
+        }
+        if (state.otherCurrencyCount > 0) {
+            Text(
+                "${state.otherCurrencyCount} expense(s) in another currency are not included in these totals.",
+                style = t.bodySm,
+                color = colors.textMuted,
+                modifier = Modifier.padding(top = 4.dp)
             )
         }
         Spacer(Modifier.height(8.dp))
@@ -630,7 +653,8 @@ private fun RecentRow(row: RecentExpense, symbol: String, onClick: () -> Unit) {
         }
         Spacer(Modifier.width(8.dp))
         Text(
-            "-$symbol${formatIndian(row.amount)}",
+            // 8+ digits did not fit beside the note and were cut to "-$99,99,99…".
+            if (row.amount >= 10_000_000) "-${compactAmount(symbol, row.amount)}" else "-$symbol${formatIndian(row.amount)}",
             style = t.numericMd.copy(fontWeight = FontWeight.Bold),
             color = colors.textPrimary
         )
@@ -688,13 +712,8 @@ private fun Fab(onClick: () -> Unit, modifier: Modifier = Modifier) {
 
 /* ----------------------------------------------------------------- shared */
 
-/** 12480 -> "₹12.4k", 940 -> "₹940" - the donut centre has no room for more. */
-internal fun compactAmount(symbol: String, value: Int): String = when {
-    value >= 10_000_000 -> "$symbol${value / 10_000_000}.${(value % 10_000_000) / 1_000_000}cr"
-    value >= 100_000 -> "$symbol${value / 100_000}.${(value % 100_000) / 10_000}L"
-    value >= 1_000 -> "$symbol${value / 1_000}.${(value % 1_000) / 100}k"
-    else -> "$symbol$value"
-}
+internal fun compactAmount(symbol: String, value: Int): String =
+    com.fixmoney.shared.model.compactAmount(symbol, value)
 
 /** "Today" / "Yesterday" / "12 Sep" - the app stores no clock time. */
 internal fun relativeDay(iso: String): String {

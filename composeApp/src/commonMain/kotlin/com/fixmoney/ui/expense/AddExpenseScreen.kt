@@ -1,5 +1,7 @@
 package com.fixmoney.ui.expense
 
+import com.fixmoney.shared.db.parseStoredAmount
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -88,12 +90,14 @@ fun AddExpenseScreen(
     val expenseRepo: ExpenseRepository = koinInject()
     val expenseDao: ExpenseDao = koinInject()
 
-    val symbol = remember { CurrencyConstants.symbolFor(prefs.getCurrencyCode()) }
+    val profileCurrency = remember { prefs.getCurrencyCode() }
     var categories by remember { mutableStateOf<List<Category>>(emptyList()) }
     var selected by remember { mutableStateOf<Category?>(null) }
     var amount by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var dateIso by remember { mutableStateOf(todayIso()) }
+    // The currency printed on a scanned receipt, when it differs from the profile's.
+    var scannedForeignCurrency by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
     // The row being edited, once loaded. Held whole so `updateExpense` can carry
@@ -117,7 +121,9 @@ fun AddExpenseScreen(
         val row = editing ?: expenseDao.getExpenseById(id) ?: return@LaunchedEffect
         if (editing == null) {
             editing = row
-            amount = row.amount.filter { it.isDigit() }.take(7)
+            // Rounded, not digit-stripped: "12.50" from the old app became
+            // "1250" here, and saving the edit wrote 100x the real amount.
+            amount = parseStoredAmount(row.amount).takeIf { it > 0 }?.toString()?.take(7).orEmpty()
             note = row.note
             dateIso = row.date
         }
@@ -142,8 +148,10 @@ fun AddExpenseScreen(
         // edited would silently rewrite it from a photo.
         if (editingId != null) return@LaunchedEffect
         val result = scanned ?: return@LaunchedEffect
-        result.amount?.let { amount = it.filter { c -> c.isDigit() }.take(7) }
+        result.amount?.let { amount = parseStoredAmount(it).takeIf { v -> v > 0 }?.toString()?.take(7).orEmpty() }
         result.note?.let { note = it }
+        // A ₹ bill scanned on a $ profile was saved as $ without a word.
+        scannedForeignCurrency = result.currency?.takeIf { !it.equals(profileCurrency, ignoreCase = true) }
         result.date?.let { dateIso = it }
 
         val name = result.category
@@ -161,6 +169,7 @@ fun AddExpenseScreen(
         if (name == null || categories.isNotEmpty()) onScanConsumed()
     }
 
+    val symbol = CurrencyConstants.symbolFor(editing?.currency ?: profileCurrency)
     val amountValue = amount.toIntOrNull() ?: 0
     val canSave = amountValue > 0 && selected != null && !saving
 
@@ -247,6 +256,16 @@ fun AddExpenseScreen(
                             .background(colors.accent)
                     )
                 }
+                scannedForeignCurrency?.let { code ->
+                    Text(
+                        "This receipt is in $code but your profile is in $profileCurrency. " +
+                            "It will be saved as $profileCurrency - check the amount before saving.",
+                        style = t.bodySm,
+                        color = colors.negative,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)
+                    )
+                }
 
                 Spacer(Modifier.height(22.dp))
                 Row(
@@ -317,7 +336,9 @@ fun AddExpenseScreen(
                                 expenseRepo.updateExpense(
                                     existing = existing,
                                     amount = amountValue,
-                                    currency = prefs.getCurrencyCode(),
+                                    // The row keeps the currency it was recorded in;
+                                    // relabelling it on edit turned ₹ into $.
+                                    currency = existing.currency,
                                     dateIso = dateIso,
                                     note = note.trim(),
                                     category = category
@@ -628,7 +649,7 @@ private fun KeypadKey(key: String, modifier: Modifier = Modifier, onKey: (String
         contentAlignment = Alignment.Center
     ) {
         if (key == BACKSPACE) {
-            LineIcon(Res.drawable.nd_backspace, colors.textMuted, 20.dp)
+            LineIcon(Res.drawable.nd_backspace, colors.textMuted, 20.dp, contentDescription = "Delete digit")
         } else {
             Text(key, style = t.headlineSm.copy(fontSize = 20.sp), color = colors.textPrimary)
         }

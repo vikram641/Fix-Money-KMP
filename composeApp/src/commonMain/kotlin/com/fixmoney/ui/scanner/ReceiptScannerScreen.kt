@@ -126,7 +126,7 @@ fun ReceiptScannerScreen(
             ) {
                 LineIcon(Res.drawable.nd_sparkle, colors.accent, 14.dp)
                 Spacer(Modifier.width(7.dp))
-                Text("AI RECEIPT SCAN", style = t.labelCaps, color = colors.accent)
+                Text("FIXOO RECEIPT SCAN", style = t.labelCaps, color = colors.accent)
             }
             Spacer(Modifier.weight(1f))
             // Balances the row so the chip sits centred, without pretending to
@@ -198,6 +198,8 @@ fun ReceiptScannerScreen(
                         filled = true,
                         modifier = Modifier.weight(1f)
                     ) {
+                        // Two taps in one frame started two scans (and two charges).
+                        if (reading) return@ScannerButton
                         reading = true
                         hint = "Reading receipt…"
                         scope.launch {

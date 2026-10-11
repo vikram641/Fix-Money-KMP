@@ -29,3 +29,6 @@ expect fun currentTimeLabel(): String
 
 /** "1:15 PM" for a stored epoch-millis timestamp, in the device's zone. */
 expect fun timeLabelOf(epochMillis: Long): String
+
+/** The local calendar date (yyyy-MM-dd) of an instant, in the device's own time zone. */
+expect fun dateIsoOf(epochMillis: Long): String

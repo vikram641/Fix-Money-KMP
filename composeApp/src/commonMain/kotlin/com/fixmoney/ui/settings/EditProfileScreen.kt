@@ -1,5 +1,7 @@
 package com.fixmoney.ui.settings
 
+import com.fixmoney.shared.db.amountValue
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -67,7 +69,8 @@ fun EditProfileScreen(onBack: () -> Unit) {
     val dao: ExpenseDao = koinInject()
 
     var name by remember { mutableStateOf(prefs.getUserName().orEmpty()) }
-    var currency by remember { mutableStateOf(prefs.getCurrencyCode()) }
+    val savedCurrency = remember { prefs.getCurrencyCode() }
+    var currency by remember { mutableStateOf(savedCurrency) }
     var currencyOpen by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -78,7 +81,7 @@ fun EditProfileScreen(onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         val rows = dao.getExpensesOnce()
         expenseCount = rows.size
-        totalTracked = rows.sumOf { it.amount.toIntOrNull() ?: 0 }
+        totalTracked = rows.filter { it.currency.isBlank() || it.currency.equals(savedCurrency, true) }.sumOf { it.amountValue }
         memberSince = rows.mapNotNull { row -> isoToEpochDay(row.date)?.let { it to row.date } }
             .minByOrNull { it.first }?.second
     }
@@ -96,7 +99,7 @@ fun EditProfileScreen(onBack: () -> Unit) {
                     .background(colors.surfaceCard).clickable(onClick = onBack),
                 contentAlignment = Alignment.Center
             ) {
-                LineIcon(Res.drawable.nd_arrow_left, colors.textPrimary, 19.dp)
+                LineIcon(Res.drawable.nd_arrow_left, colors.textPrimary, 19.dp, contentDescription = "Back")
             }
             Text(
                 "Edit Profile",
@@ -111,18 +114,23 @@ fun EditProfileScreen(onBack: () -> Unit) {
                 .padding(horizontal = 18.dp)
         ) {
             Spacer(Modifier.height(10.dp))
-            Box(
-                Modifier.size(116.dp).clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(colors.fabStart, colors.fabEnd)))
-                    .align(Alignment.CenterHorizontally),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    name.trim().firstOrNull()?.uppercase() ?: "?",
-                    style = t.displayHero.copy(fontSize = 46.sp),
-                    color = Color.White
+            var showAvatars by remember { mutableStateOf(false) }
+            // The badge sits outside the circle, so only the avatar is clipped.
+            Box(Modifier.align(Alignment.CenterHorizontally)) {
+                ProfileAvatar(
+                    name, 116.dp,
+                    modifier = Modifier.clip(CircleShape).clickable { showAvatars = true }
                 )
+                // Edit badge: the avatar is now tappable.
+                Box(
+                    Modifier.align(Alignment.BottomEnd).size(34.dp).clip(CircleShape)
+                        .background(colors.accent)
+                        .border(3.dp, colors.surface, CircleShape)
+                        .clickable { showAvatars = true },
+                    contentAlignment = Alignment.Center
+                ) { LineIcon(Res.drawable.nd_edit, Color.White, 15.dp, contentDescription = "Change avatar") }
             }
+            if (showAvatars) AvatarPickerSheet(name, onDismiss = { showAvatars = false })
 
             Spacer(Modifier.height(16.dp))
             Text(
@@ -184,7 +192,7 @@ fun EditProfileScreen(onBack: () -> Unit) {
                         }
                         BasicTextField(
                             value = name,
-                            onValueChange = { name = it; error = null },
+                            onValueChange = { name = it.take(com.fixmoney.ui.onboarding.MAX_NAME_LENGTH); error = null },
                             singleLine = true,
                             textStyle = t.titleMd.copy(color = colors.textPrimary),
                             cursorBrush = SolidColor(colors.accent),
@@ -244,6 +252,18 @@ fun EditProfileScreen(onBack: () -> Unit) {
                     }
                 }
 
+                // Nothing converts money between currencies, and existing rows keep
+                // the currency they were recorded in. Without this line a ₹5,000
+                // history silently started reading as "$5,000".
+                if (currency != savedCurrency && expenseCount > 0) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Your $expenseCount existing expenses stay in $savedCurrency and are not converted. " +
+                            "New expenses will be in $currency.",
+                        style = t.bodySm,
+                        color = colors.negative
+                    )
+                }
                 error?.let {
                     Spacer(Modifier.height(12.dp))
                     Text(it, style = t.bodySm, color = colors.negative)
