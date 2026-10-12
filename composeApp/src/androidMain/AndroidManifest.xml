@@ -3,6 +3,44 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Settings > Export Data, API 24-28 only. MediaStore has no Downloads
+         collection before API 29, so the CSV goes to the legacy public
+         Downloads dir there; from API 29 on it is scoped storage and this
+         permission is neither declared nor needed. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <!-- Receipt scanner. The photo is never written to disk and never read from
+         the gallery, so no storage or media permission is involved. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
+    <!-- Floating Voice Quick-Add: a draggable bubble over every other app that
+         listens on tap and files what you say as an expense. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- `microphone`, not `specialUse`. Two reasons, and the first is a bug:
+         from Android 14 a foreground service may only reach the mic if it
+         declares the microphone type, so the bubble's whole purpose would fail
+         on 14+ with only `specialUse` - invisible on the Android 12 test
+         device. The second is that `specialUse` is Play's catch-all: it gets a
+         manual review and a demo video, and a reviewer looking at a service
+         that records audio would send us to this type anyway. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Android 13+: without it the foreground service still runs, but its
+         ongoing notification is silently dropped. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Makes the on-device speech recognizer visible to this app under Android 11+
+         package-visibility rules (SpeechRecognizer binds to it directly). -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+
     <application
         android:name="com.fixmoney.FixMoneyApp"
         android:allowBackup="true"
@@ -12,8 +50,23 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
+        <!-- AdMob App ID (not an ad unit) - the same app the old FixMoney uses,
+             since this build ships as an update to that listing. Without it the
+             Mobile Ads SDK crashes the app at startup. -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-7178541936408370~9464292553" />
+
+        <!-- singleTask: the whole app is one activity hosting a NavHost, so a
+             second instance is never wanted. Without it, opening the app from
+             the launcher while a task started some other way (am start, a
+             notification) was already running stacked a *second* MainActivity
+             on top, starting at Home - Back then surfaced the old instance's
+             screen or left the app. Seen on the OnePlus 2026-10-07. -->
         <activity
             android:name="com.fixmoney.MainActivity"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
@@ -22,5 +75,26 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Hands an exported CSV to another app. Needed only on API 24-28,
+             where the export is a plain file in public Downloads and a `file://`
+             URI would throw FileUriExposedException; API 29+ exports through
+             MediaStore and already has a shareable content:// URI. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.exports"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/export_paths" />
+        </provider>
+
+        <!-- A foreground service so the overlay window and the mic survive while
+             FixMoney itself isn't in the foreground. -->
+        <service
+            android:name="com.fixmoney.voice.FloatingBubbleService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
     </application>
 </manifest>

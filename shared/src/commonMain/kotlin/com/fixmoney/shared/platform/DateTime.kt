@@ -16,3 +16,19 @@ expect fun currentTimeMillis(): Long
 
 /** "2026-09-27" for today, the `yyyy-MM-dd` format the old app stored. */
 expect fun todayIso(): String
+
+/**
+ * "10:41 AM" in the device's locale and zone - the timestamp under a chat
+ * message.
+ *
+ * `expect`/`actual` rather than arithmetic on [currentTimeMillis]: turning
+ * epoch millis into a wall clock needs the zone offset and the locale's 12/24
+ * hour preference, and both platforms already have a formatter that knows them.
+ */
+expect fun currentTimeLabel(): String
+
+/** "1:15 PM" for a stored epoch-millis timestamp, in the device's zone. */
+expect fun timeLabelOf(epochMillis: Long): String
+
+/** The local calendar date (yyyy-MM-dd) of an instant, in the device's own time zone. */
+expect fun dateIsoOf(epochMillis: Long): String

@@ -1,19 +1,31 @@
 package com.fixmoney.ui.onboarding
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.*
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,28 +35,33 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.fixmoney.resources.*
+import com.fixmoney.resources.Res
+import com.fixmoney.resources.nd_arrow_right
+import com.fixmoney.resources.nd_card
 import com.fixmoney.shared.data.CategoryRepository
 import com.fixmoney.shared.model.Category
 import com.fixmoney.shared.model.CurrencyConstants
-import com.fixmoney.ui.AppTheme
-import com.fixmoney.ui.categoryIconFor
-import com.fixmoney.ui.components.IconBadge
-import com.fixmoney.ui.components.PrimaryButton
-import com.fixmoney.ui.components.StepHeader
-import org.jetbrains.compose.resources.DrawableResource
-import org.jetbrains.compose.resources.painterResource
+import com.fixmoney.ui.Design
+import com.fixmoney.ui.categoryGlyph
+import com.fixmoney.ui.components.LineIcon
+import com.fixmoney.ui.components.horizontalSwipe
+import com.fixmoney.ui.designType
 import org.koin.compose.koinInject
 
 private const val BUDGET_MAX = 100_000
+private val QUICK_PICKS = listOf(10_000, 25_000, 50_000)
 
-/** Port of `fragment_onboarding_setup_budget.xml` - step 2 of 3. */
+/**
+ * Step 2 of 3, rebuilt to the 2026 mockup
+ * (`stitch_fixmoney_fintech_app_design 7/fixmoney_setup_monthly_budget_obsidian_dark`).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SetupBudgetScreen(
@@ -52,206 +69,185 @@ fun SetupBudgetScreen(
     onBack: () -> Unit,
     onContinue: () -> Unit
 ) {
-    val colors = AppTheme.colors
+    val colors = Design.colors
+    val t = designType()
     val symbol = CurrencyConstants.symbolFor(state.currencyCode)
 
-    // The old OnboardingViewModel kicked this off when onboarding started, so
-    // categories were ready several screens later. Here the fetch is cached in
-    // the repository, so arriving on this screen is soon enough.
     val repository: CategoryRepository = koinInject()
     var categories by remember { mutableStateOf<List<Category>>(emptyList()) }
     LaunchedEffect(Unit) { categories = repository.getCategories() }
 
-    // The old ConstraintLayout had no ScrollView - it only ever fitted because
-    // the reference device is 20:9. On a shorter screen (iPhone SE) the category
-    // row and the Continue button fell off the bottom, so the body scrolls and
-    // the button stays pinned. On a tall device this looks identical.
     Column(
-        modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 24.dp)
+        modifier = Modifier.fillMaxSize()
+            .horizontalSwipe(onSwipeLeft = onContinue, onSwipeRight = onBack)
+            .safeDrawingPadding()
+            .padding(horizontal = 24.dp)
     ) {
-      Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-        Spacer(Modifier.height(20.dp))
-        StepHeader(step = 2, total = 3, onBack = onBack)
+        Spacer(Modifier.height(16.dp))
+        SetupHeader(step = 2, total = 3, onBack = onBack)
 
-        Spacer(Modifier.height(26.dp))
-        IconBadge(Res.drawable.ic_wallet_outline, size = 70.dp, iconSize = 32.dp, corner = 21.dp)
+        // The body scrolls and the button stays pinned. The mockup fits on a
+        // 20:9 phone; on a short one the category row and the button fall off
+        // the bottom otherwise. On a tall device this looks identical.
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            Spacer(Modifier.height(32.dp))
+            SetupIconTile(Res.drawable.nd_card)
 
-        Spacer(Modifier.height(22.dp))
-        Text(
-            "Set your monthly\nbudget",
-            fontSize = 28.sp,
-            lineHeight = 38.sp,
-            fontWeight = FontWeight.Bold,
-            color = colors.textPrimary
-        )
-        Spacer(Modifier.height(10.dp))
-        Text(
-            "You can always change this later in Settings.",
-            fontSize = 15.sp,
-            color = colors.textSecondary
-        )
-
-        Spacer(Modifier.height(24.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(symbol, fontSize = 30.sp, fontWeight = FontWeight.Bold, color = colors.accent)
-            Spacer(Modifier.width(4.dp))
-            BasicTextField(
-                value = if (state.monthlyBudget == 0) "" else state.monthlyBudget.toString(),
-                onValueChange = { input ->
-                    val digits = input.filter { it.isDigit() }.take(7)
-                    state.monthlyBudget = digits.toIntOrNull() ?: 0
-                },
-                singleLine = true,
-                textStyle = LocalTextStyle.current.copy(
-                    fontSize = 46.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = colors.textPrimary
-                ),
-                cursorBrush = SolidColor(colors.accent),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.width(IntrinsicSize.Min).widthIn(min = 60.dp)
+            Spacer(Modifier.height(24.dp))
+            Text("Set your monthly\nbudget", style = t.displayHero, color = colors.textPrimary)
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "You can always change this later in Settings.",
+                style = t.bodyMd.copy(fontSize = 15.sp),
+                color = colors.textMuted
             )
-        }
 
-        Spacer(Modifier.height(18.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)
-        ) {
-            listOf(10_000, 25_000, 50_000).forEach { preset ->
-                val selected = state.monthlyBudget == preset
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(CircleShape)
-                        .background(colors.bgCard)
-                        .border(
-                            width = if (selected) 1.5.dp else 1.dp,
-                            color = if (selected) colors.accent else colors.cardStroke,
-                            shape = CircleShape
-                        )
-                        .clickable { state.monthlyBudget = preset }
-                        .padding(vertical = 14.dp)
-                ) {
-                    Text(
-                        "$symbol${formatIndian(preset)}",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = colors.textPrimary,
-                        maxLines = 1
-                    )
-                }
-            }
-        }
+            Spacer(Modifier.height(28.dp))
+            Text(
+                buildAnnotatedString {
+                    withStyle(SpanStyle(color = colors.accent)) { append(symbol) }
+                    withStyle(SpanStyle(color = colors.textPrimary)) {
+                        append(" ${formatIndian(state.monthlyBudget)}")
+                    }
+                },
+                style = t.displayHero.copy(fontSize = 40.sp, lineHeight = 48.sp),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
 
-        Spacer(Modifier.height(20.dp))
-        val sliderColors = SliderDefaults.colors(
-            thumbColor = colors.accent,
-            activeTrackColor = colors.accent,
-            inactiveTrackColor = colors.progressBg
-        )
-        Slider(
-            value = state.monthlyBudget.coerceIn(0, BUDGET_MAX).toFloat(),
-            onValueChange = { state.monthlyBudget = (it / 500).toInt() * 500 },
-            valueRange = 0f..BUDGET_MAX.toFloat(),
-            colors = sliderColors,
-            // Material3 1.3+ draws the thumb as a tall vertical bar; the old
-            // app's was a plain round handle.
-            thumb = {
-                Box(
-                    Modifier.size(22.dp).clip(CircleShape).background(colors.accent)
-                )
-            },
-            // Its default track also draws a gap around the thumb and a stop
-            // dot at the end; the old app's was a plain two-tone bar.
-            track = { sliderState ->
-                SliderDefaults.Track(
-                    sliderState = sliderState,
-                    colors = sliderColors,
-                    drawStopIndicator = null,
-                    thumbTrackGapSize = 0.dp,
-                    modifier = Modifier.height(6.dp)
-                )
-            }
-        )
-        Text(
-            "${symbol}0 — $symbol${formatIndian(BUDGET_MAX)}",
-            fontSize = 13.sp,
-            color = colors.textSecondary,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(Modifier.height(20.dp))
-        Text(
-            "Track these categories (optional)",
-            fontSize = 15.sp,
-            color = colors.textSecondary
-        )
-        Spacer(Modifier.height(12.dp))
-        if (categories.isEmpty()) {
-            // Keeps the row from collapsing while the Firestore call is in flight.
-            Box(Modifier.height(100.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(24.dp),
-                    color = colors.accent,
-                    strokeWidth = 2.dp
-                )
-            }
-        } else {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            items(categories, key = { it.id }) { category ->
-                val selected = category.id in state.selectedCategoryIds
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Spacer(Modifier.height(20.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                QUICK_PICKS.forEach { amount ->
+                    val selected = state.monthlyBudget == amount
                     Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(colors.bgCard)
+                        modifier = Modifier.weight(1f)
+                            .height(54.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(
+                                if (selected) colors.accent.copy(alpha = 0.16f) else colors.surfaceCard
+                            )
                             .border(
                                 width = if (selected) 1.5.dp else 1.dp,
-                                color = if (selected) colors.accent else colors.cardStroke,
-                                shape = RoundedCornerShape(20.dp)
+                                color = if (selected) colors.accent else colors.stroke,
+                                shape = RoundedCornerShape(16.dp)
                             )
-                            .clickable { state.toggleCategory(category.id) },
+                            .clickable { state.monthlyBudget = amount },
                         contentAlignment = Alignment.Center
                     ) {
-                        Image(
-                            painter = painterResource(categoryIconFor(category.icon)),
-                            contentDescription = null,
-                            modifier = Modifier.size(38.dp)
+                        Text(
+                            "$symbol${formatIndian(amount)}",
+                            style = t.numericSm,
+                            color = if (selected) colors.textPrimary else colors.textMuted
                         )
                     }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        category.name,
-                        fontSize = 13.sp,
-                        color = if (selected) colors.accent else colors.textSecondary
-                    )
                 }
             }
-        }
+
+            Spacer(Modifier.height(16.dp))
+            // Both the thumb and the track are custom. Material3's defaults
+            // draw a tall bar thumb, cut a gap either side of it and park a
+            // stop dot at the far end - three things the mockup does not have,
+            // and none of them reachable through `colors`.
+            val sliderColors = SliderDefaults.colors(
+                thumbColor = Color.White,
+                activeTrackColor = colors.accent,
+                inactiveTrackColor = colors.stroke
+            )
+            Slider(
+                value = state.monthlyBudget.toFloat(),
+                onValueChange = { state.monthlyBudget = it.toInt() },
+                valueRange = 0f..BUDGET_MAX.toFloat(),
+                colors = sliderColors,
+                thumb = {
+                    Box(contentAlignment = Alignment.Center) {
+                        Box(
+                            Modifier.size(30.dp).clip(CircleShape)
+                                .background(colors.accent.copy(alpha = 0.30f))
+                        )
+                        Box(Modifier.size(20.dp).clip(CircleShape).background(Color.White))
+                    }
+                },
+                track = { sliderState ->
+                    SliderDefaults.Track(
+                        sliderState = sliderState,
+                        colors = sliderColors,
+                        drawStopIndicator = null,
+                        thumbTrackGapSize = 0.dp,
+                        modifier = Modifier.height(6.dp)
+                    )
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("${symbol}0", style = t.bodySm, color = colors.textMuted)
+                Spacer(Modifier.weight(1f))
+                Text("-", style = t.bodySm, color = colors.textMuted)
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "$symbol${formatIndian(BUDGET_MAX)}",
+                    style = t.bodySm,
+                    color = colors.textMuted
+                )
+            }
+
+            Spacer(Modifier.height(26.dp))
+            Text(
+                buildAnnotatedString {
+                    withStyle(SpanStyle(color = colors.textPrimary)) { append("Track these categories ") }
+                    withStyle(SpanStyle(color = colors.textMuted)) { append("(optional)") }
+                },
+                style = t.titleMd.copy(fontSize = 15.sp)
+            )
+            Spacer(Modifier.height(14.dp))
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(vertical = 2.dp)
+            ) {
+                items(categories, key = { it.id }) { category ->
+                    val selected = category.id in state.selectedCategoryIds
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            modifier = Modifier.size(64.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(
+                                    if (selected) colors.accent.copy(alpha = 0.16f)
+                                    else colors.surfaceCard
+                                )
+                                .border(
+                                    width = if (selected) 1.5.dp else 1.dp,
+                                    color = if (selected) colors.accent else colors.stroke,
+                                    shape = RoundedCornerShape(20.dp)
+                                )
+                                .clickable { state.toggleCategory(category.id) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            LineIcon(
+                                categoryGlyph(category.icon),
+                                if (selected) colors.accent else colors.textMuted,
+                                26.dp
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            category.name,
+                            style = t.bodySm,
+                            color = if (selected) colors.textPrimary else colors.textMuted
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(20.dp))
         }
 
-        Spacer(Modifier.height(24.dp))
-      }
-
-        PrimaryButton("Continue", onContinue, enabled = state.monthlyBudget > 0)
-        Spacer(Modifier.height(40.dp))
+        GlowButton(
+            text = "Continue",
+            onClick = onContinue,
+            trailing = Res.drawable.nd_arrow_right,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(28.dp))
     }
-}
-
-/** 25000 -> "25,000", 100000 -> "1,00,000" - Indian digit grouping, as the old layout showed. */
-internal fun formatIndian(value: Int): String {
-    val s = value.toString()
-    if (s.length <= 3) return s
-    val head = s.dropLast(3)
-    val tail = s.takeLast(3)
-    val grouped = head.reversed().chunked(2).joinToString(",").reversed()
-    return "$grouped,$tail"
 }

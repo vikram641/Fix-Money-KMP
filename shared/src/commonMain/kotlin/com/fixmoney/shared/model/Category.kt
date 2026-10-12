@@ -1,10 +1,13 @@
 package com.fixmoney.shared.model
 
+import kotlinx.serialization.Serializable
+
 /**
  * A spending category. `icon` is a drawable name (`ic_food`, ...) matching the
  * images in composeResources, exactly as the old app's Firestore documents
  * stored it.
  */
+@Serializable
 data class Category(
     val id: String,
     val name: String,

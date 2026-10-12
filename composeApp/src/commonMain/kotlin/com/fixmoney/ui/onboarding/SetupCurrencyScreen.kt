@@ -3,34 +3,47 @@ package com.fixmoney.ui.onboarding
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fixmoney.resources.Res
-import com.fixmoney.resources.ic_check
-import com.fixmoney.resources.ic_currency_outline
+import com.fixmoney.resources.nd_check_circle
+import com.fixmoney.resources.nd_rupee
 import com.fixmoney.shared.model.CurrencyConstants
-import com.fixmoney.ui.AppTheme
-import com.fixmoney.ui.components.IconBadge
-import com.fixmoney.ui.components.PrimaryButton
-import com.fixmoney.ui.components.StepHeader
-import org.jetbrains.compose.resources.painterResource
+import com.fixmoney.ui.Design
+import com.fixmoney.ui.components.LineIcon
+import com.fixmoney.ui.components.horizontalSwipe
+import com.fixmoney.ui.designType
 
 /**
- * Port of `fragment_onboarding_setup_currency.xml` + `CurrencyAdapter` -
- * step 3 of 3. Lists all 14 currencies, as the old screen did.
+ * Step 3 of 3, rebuilt to the 2026 mockup
+ * (`stitch_fixmoney_fintech_app_design 7/fixmoney_setup_choose_currency_obsidian_dark`).
+ *
+ * The mockup shows five currencies; the list stays at all 14, as the old screen
+ * had. A mockup crops to what fits on one screen - it is not a statement that
+ * the other nine should go.
  */
 @Composable
 fun SetupCurrencyScreen(
@@ -38,33 +51,31 @@ fun SetupCurrencyScreen(
     onBack: () -> Unit,
     onFinish: () -> Unit
 ) {
-    val colors = AppTheme.colors
+    val colors = Design.colors
+    val t = designType()
 
     Column(
-        modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 24.dp)
+        modifier = Modifier.fillMaxSize()
+            .horizontalSwipe(onSwipeLeft = onFinish, onSwipeRight = onBack)
+            .safeDrawingPadding()
+            .padding(horizontal = 24.dp)
     ) {
-        Spacer(Modifier.height(20.dp))
-        StepHeader(step = 3, total = 3, onBack = onBack)
+        Spacer(Modifier.height(16.dp))
+        SetupHeader(step = 3, total = 3, onBack = onBack)
 
-        Spacer(Modifier.height(40.dp))
-        IconBadge(Res.drawable.ic_currency_outline, size = 70.dp, iconSize = 32.dp, corner = 21.dp)
+        Spacer(Modifier.height(32.dp))
+        SetupIconTile(Res.drawable.nd_rupee)
 
-        Spacer(Modifier.height(22.dp))
-        Text(
-            "Choose your\ncurrency",
-            fontSize = 28.sp,
-            lineHeight = 38.sp,
-            fontWeight = FontWeight.Bold,
-            color = colors.textPrimary
-        )
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(24.dp))
+        Text("Choose your\ncurrency", style = t.displayHero, color = colors.textPrimary)
+        Spacer(Modifier.height(12.dp))
         Text(
             "This is how amounts show up across the app.",
-            fontSize = 15.sp,
-            color = colors.textSecondary
+            style = t.bodyMd.copy(fontSize = 15.sp),
+            color = colors.textMuted
         )
 
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(20.dp))
         LazyColumn(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -74,51 +85,48 @@ fun SetupCurrencyScreen(
                 val selected = currency.code == state.currencyCode
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(colors.bgCard)
+                    modifier = Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(colors.surfaceCard)
                         .border(
+                            // The selected row is outlined in the text colour,
+                            // not the accent: the accent already carries the
+                            // tick, and two purples on one row read as two
+                            // different states.
                             width = if (selected) 1.5.dp else 1.dp,
-                            color = if (selected) colors.accent else colors.cardStroke,
-                            shape = RoundedCornerShape(18.dp)
+                            color = if (selected) colors.textPrimary else colors.stroke,
+                            shape = RoundedCornerShape(20.dp)
                         )
                         .clickable { state.currencyCode = currency.code }
-                        .padding(horizontal = 14.dp, vertical = 14.dp)
+                        .padding(horizontal = 14.dp, vertical = 13.dp)
                 ) {
                     Box(
-                        modifier = Modifier.size(44.dp).clip(CircleShape)
-                            .background(colors.accent.copy(alpha = 0.14f)),
+                        modifier = Modifier.size(46.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (selected) colors.accent.copy(alpha = 0.18f)
+                                else colors.surfaceHigh
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             currency.symbol,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.accent
+                            style = t.titleMd.copy(fontSize = 18.sp),
+                            color = if (selected) colors.accent else colors.textMuted
                         )
                     }
-                    Spacer(Modifier.width(16.dp))
+                    Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(
-                            currency.name,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.textPrimary
-                        )
-                        Text(currency.code, fontSize = 14.sp, color = colors.textSecondary)
+                        Text(currency.name, style = t.titleMd, color = colors.textPrimary)
+                        Text(currency.code, style = t.bodySm, color = colors.textMuted)
                     }
                     if (selected) {
                         Box(
-                            modifier = Modifier.size(28.dp).clip(CircleShape).background(colors.accent),
+                            modifier = Modifier.size(28.dp).clip(CircleShape)
+                                .background(colors.accent),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                painter = painterResource(Res.drawable.ic_check),
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
+                            LineIcon(Res.drawable.nd_check_circle, Color.White, 18.dp)
                         }
                     }
                 }
@@ -126,7 +134,7 @@ fun SetupCurrencyScreen(
         }
 
         Spacer(Modifier.height(14.dp))
-        PrimaryButton("Finish", onFinish)
-        Spacer(Modifier.height(40.dp))
+        GlowButton(text = "Finish", onClick = onFinish, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(28.dp))
     }
 }

@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">FixMoney</string>
+    <string name="voice_bubble_notification_title">Floating voice quick-add is on</string>
+    <string name="voice_bubble_notification_text">Tap the floating mic bubble anywhere to add an expense by voice</string>
+    <string name="voice_bubble_hide">✕  Hide bubble</string>
+    <string name="voice_bubble_hidden">Voice bubble hidden — turn it back on in Settings</string>
 </resources>

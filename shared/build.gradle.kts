@@ -1,4 +1,3 @@
-import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -13,36 +12,17 @@ room {
     schemaDirectory("$projectDir/schemas")
 }
 
-/**
- * KMP has no BuildConfig, so the Groq key is generated into a source file from
- * local.properties (gitignored) instead of being committed.
+/*
+ * The Groq key used to be generated into a source file here and read as
+ * `Secrets.GROQ_API_KEY`. A compile-time constant lands in the dex, so the key
+ * shipped inside every APK and `strings` pulled it straight back out - checked
+ * on a real build.
+ *
+ * It now lives on the Cloudflare Worker in `worker/`, which the app calls
+ * instead. Nothing in the app carries a credential, so there is nothing to
+ * generate. Do not reintroduce this pattern for the next key: put it behind the
+ * Worker.
  */
-val generateSecrets by tasks.registering {
-    val outputDir = layout.buildDirectory.dir("generated/secrets")
-    outputs.dir(outputDir)
-    val key = Properties().apply {
-        val f = rootProject.file("local.properties")
-        if (f.exists()) f.inputStream().use { load(it) }
-    }.getProperty("GROQ_API_KEY", "")
-    doLast {
-        val dir = outputDir.get().asFile.resolve("com/fixmoney/shared/ai")
-        dir.mkdirs()
-        dir.resolve("Secrets.kt").writeText(
-            """
-            package com.fixmoney.shared.ai
-
-            /** GENERATED from local.properties - do not edit. */
-            internal object Secrets {
-                const val GROQ_API_KEY: String = "$key"
-            }
-            """.trimIndent() + "\n"
-        )
-    }
-}
-
-kotlin.sourceSets.commonMain {
-    kotlin.srcDir(generateSecrets)
-}
 
 /**
  * Business logic only - no UI. ViewModels, repositories, networking, and
@@ -73,9 +53,18 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
+            // Receipt OCR. The iOS actual uses the Vision framework, which is
+            // part of the OS and needs no dependency at all.
+            implementation(libs.mlkit.text.recognition)
+            implementation(libs.kotlinx.coroutines.play.services)
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
+        }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+            implementation("com.russhwolf:multiplatform-settings-test:1.3.0")
         }
     }
 }
