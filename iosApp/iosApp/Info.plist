@@ -12,6 +12,12 @@
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
+	<!-- Siri resolves an App Shortcut's \(.applicationName) from the display name
+	     first. Without this key it falls back to CFBundleName, which happens to
+	     match today - but leaving it implicit makes every phrase depend on a
+	     fallback, so it is stated outright. -->
+	<key>CFBundleDisplayName</key>
+	<string>$(APP_NAME)</string>
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
@@ -31,6 +37,10 @@
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
+	<!-- Receipt scanner. iOS terminates the app rather than prompting if the
+	     camera is opened without this string present. -->
+	<key>NSCameraUsageDescription</key>
+	<string>FixMoney uses the camera to scan receipts so it can fill in an expense for you.</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

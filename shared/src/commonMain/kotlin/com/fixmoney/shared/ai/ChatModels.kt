@@ -18,4 +18,9 @@ sealed class ChatAskResult {
     data class Success(val answer: ChatAnswer) : ChatAskResult()
     object QuotaExceeded : ChatAskResult()
     object Failure : ChatAskResult()
+    /**
+     * The coin layer refused the call - no coins, a daily limit (trial or
+     * premium), or every AI provider busy. Nothing was charged.
+     */
+    data class Blocked(val gate: com.fixmoney.shared.coins.AiGate) : ChatAskResult()
 }

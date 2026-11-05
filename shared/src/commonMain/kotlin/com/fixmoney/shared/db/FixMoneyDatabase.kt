@@ -11,7 +11,7 @@ import androidx.room.RoomDatabaseConstructor
  * `expenses` and `budgets` so far; the old database also had categories and
  * the two pending-sync queues. They get added as their screens are migrated.
  */
-@Database(entities = [ExpenseEntity::class, BudgetEntity::class], version = 2)
+@Database(entities = [ExpenseEntity::class, BudgetEntity::class], version = 3)
 @ConstructedBy(FixMoneyDatabaseConstructor::class)
 abstract class FixMoneyDatabase : RoomDatabase() {
     abstract fun expenseDao(): ExpenseDao

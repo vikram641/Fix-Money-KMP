@@ -9,6 +9,7 @@ minSdk = "24"
 targetSdk = "36"
 
 androidxActivityCompose = "1.10.1"
+androidxCore = "1.16.0"
 androidxLifecycle = "2.9.1"
 coroutines = "1.10.2"
 serialization = "1.8.1"
@@ -23,7 +24,36 @@ room = "2.7.2"
 sqlite = "2.5.2"
 ksp = "2.2.0-2.0.2"
 
+# Receipt scanner, Android half. Same versions the old app shipped: CameraX
+# 1.4.2 is also the release that fixed the 16 KB page-size requirement, so do
+# not drop below it. Both are Android-only - iOS uses the Vision framework,
+# which ships with the OS and needs no dependency, so neither of these has to
+# clear the iosX64 / Kotlin-version klib gate.
+cameraX = "1.4.2"
+mlkitTextRecognition = "16.0.1"
+coroutinesPlayServices = "1.10.2"
+
+# AI coins: rewarded video ads + the consent form that must run before any ad
+# request. Same versions the old app shipped. Android only - iOS has no ads yet.
+playServicesAds = "23.6.0"
+userMessagingPlatform = "3.1.0"
+# Not used directly. play-services-ads pins `listenablefuture` to the empty
+# "9999.0-empty-to-avoid-conflict-with-guava" stub, which assumes full Guava is
+# on the classpath - it is only at *runtime* there, so CameraX's
+# ListenableFuture vanished from the compile classpath. Declaring Guava puts
+# the class back.
+guava = "33.3.1-android"
+# Fixoo Premium (Rs 99/month subscription). Play policy requires Play Billing
+# for digital subscriptions; Play's checkout offers UPI / Google Pay / cards.
+# v8+ is mandatory for app updates from 31 Aug 2026. The plain Java artifact,
+# not billing-ktx, so no Kotlin-metadata version can clash with our 2.2.0.
+playBilling = "9.1.0"
+
 [libraries]
+guava = { module = "com.google.guava:guava", version.ref = "guava" }
+play-billing = { module = "com.android.billingclient:billing", version.ref = "playBilling" }
+play-services-ads = { module = "com.google.android.gms:play-services-ads", version.ref = "playServicesAds" }
+user-messaging-platform = { module = "com.google.android.ump:user-messaging-platform", version.ref = "userMessagingPlatform" }
 # --- shared (business logic, no UI) ---
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
@@ -51,8 +81,21 @@ multiplatform-settings = { module = "com.russhwolf:multiplatform-settings", vers
 compottie = { module = "io.github.alexzhirkevich:compottie", version.ref = "compottie" }
 compottie-resources = { module = "io.github.alexzhirkevich:compottie-resources", version.ref = "compottie" }
 
+# --- receipt scanner (Android only) ---
+# On-device OCR: reads the photo locally, free and offline, then the shared
+# ReceiptTextParser sends the resulting text to Groq.
+mlkit-text-recognition = { module = "com.google.mlkit:text-recognition", version.ref = "mlkitTextRecognition" }
+# Gives ML Kit's Task an `await()`.
+kotlinx-coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-play-services", version.ref = "coroutinesPlayServices" }
+androidx-camera-core = { module = "androidx.camera:camera-core", version.ref = "cameraX" }
+androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "cameraX" }
+androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "cameraX" }
+androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "cameraX" }
+
 # --- composeApp (UI) ---
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivityCompose" }
+# NotificationCompat for the voice bubble's foreground-service notification.
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
 androidx-lifecycle-viewmodel-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidxLifecycle" }
 androidx-lifecycle-runtime-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidxLifecycle" }
 

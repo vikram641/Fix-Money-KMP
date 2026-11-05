@@ -1,6 +1,8 @@
 package com.fixmoney.shared.platform
 
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Locale
 
 actual fun currentHour(): Int = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
 
@@ -18,3 +20,12 @@ actual fun todayIso(): String {
     val d = c.get(Calendar.DAY_OF_MONTH).toString().padStart(2, '0')
     return "${c.get(Calendar.YEAR)}-$m-$d"
 }
+
+actual fun currentTimeLabel(): String =
+    SimpleDateFormat("h:mm a", Locale.getDefault()).format(Calendar.getInstance().time)
+
+actual fun timeLabelOf(epochMillis: Long): String =
+    SimpleDateFormat("h:mm a", Locale.getDefault()).format(java.util.Date(epochMillis))
+
+actual fun dateIsoOf(epochMillis: Long): String =
+    SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date(epochMillis))

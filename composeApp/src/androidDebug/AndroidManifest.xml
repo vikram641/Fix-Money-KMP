@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only. Lets the app reach a Worker running on the developer's
+     Mac through `adb reverse tcp:8787 tcp:8787` - plain HTTP to localhost,
+     which Android blocks by default. Release builds never see this file. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application
+        android:networkSecurityConfig="@xml/debug_network_security_config"
+        tools:ignore="UnusedAttribute" />
+</manifest>

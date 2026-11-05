@@ -1,5 +1,8 @@
 package com.fixmoney.shared.ai
 
+import com.fixmoney.shared.coins.AiFeature
+import com.fixmoney.shared.coins.AiGate
+import com.fixmoney.shared.coins.WalletRepository
 import com.fixmoney.shared.platform.httpClient
 import com.fixmoney.shared.platform.logWarn
 import io.ktor.client.call.body
@@ -22,7 +25,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 private const val TAG = "GroqChatAssistant"
-private const val GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 // Verified live against this project's Groq key via GET /openai/v1/models (2026-08-28) -
 // llama-3.3-70b-versatile came back 404 model_not_found; this one is active and supports
 // json_mode. Re-check the models endpoint if this ever 404s again - Groq's free-tier
@@ -54,18 +56,18 @@ object GroqChatAssistant {
     }
 
     suspend fun ask(
-        apiKey: String,
         question: String,
         dataSummary: String,
-        historyText: String
+        historyText: String,
+        wallet: WalletRepository? = null
     ): ChatAskResult {
-        if (apiKey.isBlank()) return ChatAskResult.Failure
-
         return try {
-            withTimeout(20_000) { call(apiKey, question, dataSummary, historyText) }
+            withTimeout(20_000) { call(question, dataSummary, historyText, wallet) }
         } catch (e: TimeoutCancellationException) {
             logWarn(TAG, "ask timed out: ${e.message}")
             ChatAskResult.Failure
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e // leaving the screen must cancel the call, not report a failure
         } catch (e: Exception) {
             logWarn(TAG, "ask failed: ${e.message}")
             ChatAskResult.Failure
@@ -73,14 +75,16 @@ object GroqChatAssistant {
     }
 
     private suspend fun call(
-        apiKey: String,
         question: String,
         dataSummary: String,
-        historyText: String
+        historyText: String,
+        wallet: WalletRepository?
     ): ChatAskResult {
+        wallet?.precheck(AiFeature.Fixoo)?.let { if (it != AiGate.Passed) return ChatAskResult.Blocked(it) }
+        val ticket = wallet?.ticket(AiFeature.Fixoo)
         val systemPrompt =
             "You are the AI assistant inside FixMoney, a personal expense-tracking app. " +
-                    "You have three jobs:\n\n" + "Founder of this App is Vikram Singh" +
+                    "You have three jobs:\n\n" + "Founder of this App is Vikram Singh.\n\n" +
                     "JOB 1 - Spending questions: Answer questions about the user's own spending " +
                     "using ONLY the DATA below - never invent a number that isn't derivable from " +
                     "it, and say so plainly if the data doesn't cover what they asked. Amounts " +
@@ -130,8 +134,8 @@ object GroqChatAssistant {
                     "DATA:\n$dataSummary" +
                     (if (historyText.isNotBlank()) "\n\nEARLIER IN THIS CHAT:\n$historyText" else "")
 
-        val response: HttpResponse = client.post(GROQ_URL) {
-            header("Authorization", "Bearer $apiKey")
+        val response: HttpResponse = client.post(AiProxy.CHAT_URL) {
+            ticket?.applyTo(this)
             contentType(ContentType.Application.Json)
             setBody(
                 GroqRequest(
@@ -148,6 +152,9 @@ object GroqChatAssistant {
 
         val bodyText = response.bodyAsText()
 
+        val gate = wallet?.absorb(ticket, response) ?: AiGate.Passed
+        if (gate != AiGate.Passed) return ChatAskResult.Blocked(gate)
+
         if (response.status == HttpStatusCode.TooManyRequests) {
             logWarn(TAG, "Groq rate limit hit: $bodyText")
             return ChatAskResult.QuotaExceeded
@@ -162,7 +169,12 @@ object GroqChatAssistant {
             ?.takeIf { it.isNotBlank() }
             ?: return ChatAskResult.Failure
 
-        val answer = json.decodeFromString<GroqAnswerPayload>(content)
+        val answer = runCatching {
+            LenientAiJson.decodeFromString<GroqAnswerPayload>(extractJsonObject(content))
+        }.getOrElse {
+            // Charged already; show the text rather than an error.
+            GroqAnswerPayload(answer = content.trim().take(1200))
+        }
 
         return ChatAskResult.Success(
             ChatAnswer(
@@ -198,10 +210,13 @@ private data class GroqChoice(val message: GroqMessage? = null)
 
 /** The model's own JSON reply, parsed out of [GroqChoice.message]'s content string. */
 @Serializable
-private data class GroqAnswerPayload(
+internal data class GroqAnswerPayload(
     val answer: String? = null,
     val categories: List<GroqCategory> = emptyList()
 )
 
 @Serializable
-private data class GroqCategory(val name: String? = null, val amount: Int = 0)
+internal data class GroqCategory(
+    val name: String? = null,
+    @Serializable(with = LenientIntSerializer::class) val amount: Int = 0
+)
